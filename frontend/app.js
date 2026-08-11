@@ -676,7 +676,7 @@ function collectTpl() {
 $('#tplNew').onclick = () => openTplModal(null);
 $('#fAddField').onclick = () => $('#fFields').appendChild(fieldRow());
 $('#modalCancel').onclick = () => $('#modalMask').classList.remove('show');
-$('#modalMask').onclick = (e) => e.target === $('#modalMask') && $('#modalMask').classList.remove('show');
+$('#modalMask').onclick = (e) => { if (e.target === $('#modalMask')) $('#modalMask').classList.remove('show'); };
 
 $('#modalSave').onclick = async () => {
   const body = collectTpl();
@@ -1245,7 +1245,7 @@ $('#rkScopePick').onclick = () => openPicker('room');
 $('#rkLayersPick').onclick = () => openPicker('layer');
 $('#ruleNew').onclick = () => openRiskModal(null);
 $('#riskModalCancel').onclick = () => $('#riskModalMask').classList.remove('show');
-$('#riskModalMask').onclick = (e) => e.target === $('#riskModalMask') && $('#riskModalMask').classList.remove('show');
+$('#riskModalMask').onclick = (e) => { if (e.target === $('#riskModalMask')) $('#riskModalMask').classList.remove('show'); };
 $('#riskModalSave').onclick = async () => {
   const body = {
     name: $('#rkName').value.trim(), category: $('#rkCategory').value, severity: $('#rkSeverity').value,
@@ -1399,7 +1399,7 @@ function openModelModal(m) {
 
 $('#modelNew').onclick = () => openModelModal(null);
 $('#modelModalCancel').onclick = () => $('#modelModalMask').classList.remove('show');
-$('#modelModalMask').onclick = (e) => e.target === $('#modelModalMask') && $('#modelModalMask').classList.remove('show');
+$('#modelModalMask').onclick = (e) => { if (e.target === $('#modelModalMask')) $('#modelModalMask').classList.remove('show'); };
 
 $('#modelModalSave').onclick = async () => {
   const roles = [];
