@@ -30,3 +30,7 @@ Thumbs.db
 shot_*.png
 shot-*.png
 idx_check.html
+
+# ---- 自动化运行时 / 调试脚本（非项目源码）----
+.workbuddy/automations/
+scripts/diag_*.js
