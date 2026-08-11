@@ -159,10 +159,17 @@ _ROLE_CACHE: dict[str, tuple[str, float]] = {}  # role -> (config_id, expire_ts)
 _ROLE_TTL = 30.0
 
 
-def get_model_for_role(role: str) -> Optional[ModelConfig]:
-    """按 role 解析当前应使用的模型配置。找不到返回 None（调用方需兜底）。"""
+def get_model_for_role(role: str, fallback: bool = True) -> Optional[ModelConfig]:
+    """按 role 解析当前应使用的模型配置。找不到返回 None（调用方需兜底）。
+
+    fallback=True（默认）：role 无人显式认领时，回退到默认连接 / 任意启用连接，
+        保证 extract / risk 等用途永不中断。
+    fallback=False：仅返回"显式勾选了该 role"的连接。视觉(多模态)等专用用途
+        必须严格——文本模型不能替视觉模型兜底，否则会拿纯文本模型去看图而报错。
+    """
     now = time.time()
-    cached = _ROLE_CACHE.get(role)
+    cache_key = (role, fallback)
+    cached = _ROLE_CACHE.get(cache_key)
     if cached and cached[1] > now:
         cfg = _get_by_id(cached[0])
         if cfg and cfg.enabled:
@@ -174,16 +181,18 @@ def get_model_for_role(role: str) -> Optional[ModelConfig]:
         configs = db.query(ModelConfig).filter(ModelConfig.enabled == True).all()
         for c in configs:
             if role in (c.roles or []):
-                _ROLE_CACHE[role] = (c.id, now + _ROLE_TTL)
+                _ROLE_CACHE[cache_key] = (c.id, now + _ROLE_TTL)
                 return c
+        if not fallback:
+            return None
         # 2) 兜底：启用且标记为默认的配置
         for c in configs:
             if c.is_default:
-                _ROLE_CACHE[role] = (c.id, now + _ROLE_TTL)
+                _ROLE_CACHE[cache_key] = (c.id, now + _ROLE_TTL)
                 return c
         # 3) 再兜底：任意启用的配置
         if configs:
-            _ROLE_CACHE[role] = (configs[0].id, now + _ROLE_TTL)
+            _ROLE_CACHE[cache_key] = (configs[0].id, now + _ROLE_TTL)
             return configs[0]
     finally:
         db.close()
@@ -252,6 +261,119 @@ def _build_messages(system: Optional[str], prompt: str) -> list[dict]:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
     return messages
+
+
+def chat_json_vision(
+    config: Optional[ModelConfig],
+    image_b64: str,
+    prompt: str,
+    system: Optional[str] = None,
+    image_media_type: str = "image/png",
+    model: Optional[str] = None,
+    timeout: Optional[int] = None,
+    temperature: Optional[float] = None,
+) -> dict | list:
+    """多模态抽取入口：把图片（base64）直接送给视觉模型，返回解析好的 JSON。
+
+    与 chat_json 的区别：用户消息携带一张图片，由模型"看图"理解，
+    不再依赖前置 OCR 把图转成文字。适用于 qwen-vl / llava / GPT-4o / 通义万相等。
+    """
+    if config is None:
+        raise LlmError("未配置可用视觉模型：请到「模型配置」添加一个连接并勾选「视觉抽取(多模态)」")
+
+    model = model or config.model
+    timeout = timeout or config.timeout
+    temperature = temperature if temperature is not None else config.temperature
+
+    if not model:
+        raise LlmError(f"视觉模型连接「{config.name}」未填写模型名")
+    if not image_b64:
+        raise LlmError("图片内容为空，无法做视觉抽取")
+
+    if config.provider == PROVIDER_OLLAMA:
+        return _ollama_vision(config, image_b64, prompt, system, model, timeout, temperature)
+    if config.provider == PROVIDER_OPENAI:
+        return _openai_vision(config, image_b64, prompt, system, model, timeout, temperature, image_media_type)
+    raise LlmError(f"未知提供方 provider={config.provider!r}（应为 ollama / openai）")
+
+
+def _ollama_vision(
+    config: ModelConfig, image_b64: str, prompt: str, system: Optional[str],
+    model: str, timeout: int, temperature: float,
+) -> dict | list:
+    """Ollama 视觉：images 字段直接放 base64 字符串（不带 data URI 前缀）。"""
+    url = f"{config.base_url.rstrip('/')}/api/chat"
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt, "images": [image_b64]})
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": temperature, "num_ctx": 8192},
+    }
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.TimeoutException as e:
+        raise LlmError(f"调用 Ollama 视觉超时（{timeout}s）：{e}") from e
+    except httpx.HTTPStatusError as e:
+        raise LlmError(f"Ollama 返回 {e.response.status_code}：{e.response.text[:200]}") from e
+    except httpx.HTTPError as e:
+        raise LlmError(f"无法连接 Ollama（{config.base_url}）：{e}") from e
+    content = (data.get("message") or {}).get("content", "")
+    return parse_json_lenient(content)
+
+
+def _openai_vision(
+    config: ModelConfig, image_b64: str, prompt: str, system: Optional[str],
+    model: str, timeout: int, temperature: float, image_media_type: str,
+) -> dict | list:
+    """OpenAI 兼容视觉：content 用 parts，image_url 带 data URI。"""
+    url = _openai_endpoint(config.base_url, "chat/completions")
+    headers = {"Content-Type": "application/json"}
+    if config.api_key:
+        headers["Authorization"] = f"Bearer {config.api_key}"
+
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{image_media_type};base64,{image_b64}"}},
+        ],
+    })
+    payload = {"model": model, "messages": messages, "temperature": temperature, "stream": False}
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            for attempt, use_rf in enumerate((True, False)):
+                p = dict(payload)
+                if use_rf:
+                    p["response_format"] = {"type": "json_object"}
+                try:
+                    resp = client.post(url, headers=headers, json=p)
+                    resp.raise_for_status()
+                    data = resp.json()
+                except httpx.HTTPStatusError as e:
+                    if attempt == 0 and e.response.status_code in (400, 422, 404):
+                        continue
+                    raise LlmError(f"模型端点返回 {e.response.status_code}：{e.response.text[:200]}") from e
+                except httpx.HTTPError as e:
+                    raise LlmError(f"无法连接模型端点（{config.base_url}）：{e}") from e
+                break
+    except LlmError:
+        raise
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise LlmError(f"OpenAI 兼容端点返回结构异常：{json.dumps(data)[:200]}") from e
+    return parse_json_lenient(content)
 
 
 def _ollama_chat(

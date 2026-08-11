@@ -15,12 +15,25 @@ from __future__ import annotations
 from app.services.llm.client import (
     LlmError,
     chat_json as _client_chat,
+    chat_json_vision as _client_chat_vision,
     get_default_config,
     get_model_for_role,
     parse_json_lenient,
 )
 
-__all__ = ["LlmError", "chat_json", "parse_json_lenient", "health_check"]
+__all__ = [
+    "LlmError",
+    "chat_json",
+    "chat_json_vision",
+    "get_model_for_role",
+    "parse_json_lenient",
+    "health_check",
+]
+
+
+def chat_json_vision(*args, **kwargs):
+    """按 role 解析当前视觉模型配置并调用多模态抽取。"""
+    return _client_chat_vision(*args, **kwargs)
 
 
 def chat_json(

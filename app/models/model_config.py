@@ -30,8 +30,13 @@ PROVIDERS = [PROVIDER_OLLAMA, PROVIDER_OPENAI]
 # 模型用途（角色）。新增用途只需在这里加 key，并在前端勾选项里加一项。
 ROLE_EXTRACT = "extract"
 ROLE_RISK = "risk"
-ROLES = [ROLE_EXTRACT, ROLE_RISK]
-ROLE_LABELS = {ROLE_EXTRACT: "结构化抽取", ROLE_RISK: "风险研判"}
+ROLE_EXTRACT_VISION = "extract_vision"
+ROLES = [ROLE_EXTRACT, ROLE_RISK, ROLE_EXTRACT_VISION]
+ROLE_LABELS = {
+    ROLE_EXTRACT: "结构化抽取",
+    ROLE_RISK: "风险研判",
+    ROLE_EXTRACT_VISION: "视觉抽取(多模态)",
+}
 
 
 class ModelConfig(Base):

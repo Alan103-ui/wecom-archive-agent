@@ -26,6 +26,7 @@ from app.db.database import get_db
 from app.models.model_config import (
     PROVIDERS,
     ROLES,
+    ROLE_EXTRACT_VISION,
     ROLE_LABELS,
     ModelConfig,
 )
@@ -172,6 +173,10 @@ def role_bindings(db: Session = Depends(get_db)):
             if c.enabled and role in (c.roles or []):
                 served = {"id": c.id, "name": c.name}
                 break
+        # 视觉(多模态)用途不允许回退到文本模型兜底：无人显式勾选即视为未绑定
+        if served is None and role == ROLE_EXTRACT_VISION:
+            binding[role] = served
+            continue
         if served is None:
             dft = next((c for c in configs if c.enabled and c.is_default), None)
             if dft:

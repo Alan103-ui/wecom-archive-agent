@@ -36,6 +36,9 @@ from app.models.entities import (
     SyncCursor,
 )
 from app.services.extract import extractor, templates
+from app.services.extract.compare import EXTRACT_MODE_KEY, MODE_OCR_LLM, MODE_VISION
+from app.models.model_config import ROLE_EXTRACT_VISION
+from app.services.kv_store import get_setting
 from app.services.ocr import engine as ocr_engine
 from app.services.risk import categories as cat
 from app.services.risk import detector
@@ -421,7 +424,16 @@ def _process_one(db: Session, att: Attachment, stats: dict) -> None:
         att.extract_status = "processing"
         db.commit()
 
-        result = extractor.extract(tpl, latest.text_content)
+        # 实验开关：视觉模式用多模态模型直接看图抽取（模板仍按 OCR 文本路由）。
+        # 若模式为视觉但并未配置视觉模型，自动回退到 OCR 路线，避免生产抽取整体失败。
+        vision_cfg_ok = get_model_for_role(ROLE_EXTRACT_VISION, fallback=False) is not None
+        use_vision = get_setting(EXTRACT_MODE_KEY, MODE_OCR_LLM) == MODE_VISION and vision_cfg_ok
+        if use_vision:
+            result = extractor.extract_vision(tpl, att.local_path)
+        else:
+            if get_setting(EXTRACT_MODE_KEY, MODE_OCR_LLM) == MODE_VISION and not vision_cfg_ok:
+                logger.warning("抽取模式为视觉但无视觉模型，回退 OCR 路线：%s", att.file_name)
+            result = extractor.extract(tpl, latest.text_content)
         msg = db.get(ChatMessage, att.message_id)
 
         db.add(

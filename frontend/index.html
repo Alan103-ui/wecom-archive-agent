@@ -264,6 +264,7 @@
       <button class="subtab active" data-sub="cfg-wecom">企业微信</button>
       <button class="subtab" data-sub="cfg-templates">抽取模板</button>
       <button class="subtab" data-sub="cfg-models">模型配置</button>
+      <button class="subtab" data-sub="cfg-extract-compare">抽取对比</button>
       <button class="subtab" data-sub="cfg-system">系统</button>
     </div>
 
@@ -440,6 +441,35 @@
       </div>
     </div>
 
+    <div class="subview" id="sub-cfg-extract-compare">
+      <div class="panel">
+        <div class="panel-head"><h3>抽取路线对比实验</h3></div>
+        <div class="desc">用同一批单据，分别跑「OCR 文字 → 文本模型」与「多模态模型直接看图」两条路线，对比字段覆盖率与耗时，决定是否需要切换。此为诊断工具，不影响线上数据。</div>
+        <div class="grid-2">
+          <div class="panel">
+            <h4>当前抽取模式（实验开关）</h4>
+            <div class="desc" id="extractModeStatus">加载中…</div>
+            <div class="row-btns">
+              <button class="btn" id="modeOcrLlm">OCR + 文本模型（现状）</button>
+              <button class="btn" id="modeVision">视觉模型直接看图（实验）</button>
+            </div>
+            <div class="desc" style="margin-top:8px">提示：切到「视觉模型」前，请先在「模型配置」添加一个连接并勾选「视觉抽取(多模态)」。</div>
+          </div>
+          <div class="panel">
+            <h4>运行对比</h4>
+            <div class="form-row inline">
+              <span><label>取样数量</label><input id="cmpSampleSize" type="number" value="5" min="1" max="50" style="width:90px"></span>
+            </div>
+            <div class="row-btns">
+              <button class="btn btn-primary" id="cmpRun">运行对比（自动取样）</button>
+            </div>
+            <div class="desc" id="cmpSummary" style="margin-top:8px"></div>
+          </div>
+        </div>
+        <div class="tpl-list" id="cmpResult"></div>
+      </div>
+    </div>
+
     <div class="subview" id="sub-cfg-system">
       <div class="grid-2">
         <div class="panel">
@@ -606,6 +636,7 @@
         <div class="chk-group">
           <label class="chk"><input type="checkbox" id="mdRoleExtract" value="extract"> 结构化抽取</label>
           <label class="chk"><input type="checkbox" id="mdRoleRisk" value="risk"> 风险研判</label>
+          <label class="chk"><input type="checkbox" id="mdRoleVision" value="extract_vision"> 视觉抽取(多模态)</label>
         </div>
       </div>
       <div class="row-btns">
@@ -622,6 +653,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=18"></script>
+<script src="/static/app.js?v=19"></script>
 </body>
 </html>

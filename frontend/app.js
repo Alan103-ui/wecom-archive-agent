@@ -141,6 +141,7 @@ const SUB_LOADERS = {
   'data-messages': () => loadMessages(1),
   'cfg-templates': loadTemplates,
   'cfg-models': loadModels,
+  'cfg-extract-compare': loadExtractCompare,
   'cfg-system': loadSystem,
   'cfg-wecom': loadWeComConfig,
 };
@@ -1337,7 +1338,7 @@ $('#layerNew').onclick = async () => {
 
 /* ================ 模型配置 ================ */
 const PROVIDER_LABEL = { ollama: '本地 Ollama', openai: '外部 OpenAI 兼容' };
-const ROLE_LABEL = { extract: '结构化抽取', risk: '风险研判' };
+const ROLE_LABEL = { extract: '结构化抽取', risk: '风险研判', extract_vision: '视觉抽取(多模态)' };
 let editingModelId = null;
 
 async function loadModels() {
@@ -1390,6 +1391,7 @@ function openModelModal(m) {
   $('#mdTimeout').value = m?.timeout ?? 180;
   $('#mdRoleExtract').checked = m ? (m.roles || []).includes('extract') : true;
   $('#mdRoleRisk').checked = m ? (m.roles || []).includes('risk') : true;
+  $('#mdRoleVision').checked = m ? (m.roles || []).includes('extract_vision') : false;
   $('#mdTestResult').textContent = '';
   $('#mdModelList').innerHTML = '';
   $('#modelModalMask').classList.add('show');
@@ -1403,6 +1405,7 @@ $('#modelModalSave').onclick = async () => {
   const roles = [];
   if ($('#mdRoleExtract').checked) roles.push('extract');
   if ($('#mdRoleRisk').checked) roles.push('risk');
+  if ($('#mdRoleVision').checked) roles.push('extract_vision');
   const body = {
     name: $('#mdName').value.trim(), provider: $('#mdProvider').value,
     base_url: $('#mdBaseUrl').value.trim(), api_key: $('#mdApiKey').value,
@@ -1477,6 +1480,55 @@ window.mdTestSaved = async (id) => {
                  d.models && d.models.length ? `模型${d.models.length}个` : ''].filter(Boolean).join(' / ');
     toast('测试：' + (msg || (d.error || '')), ok ? 'ok' : 'err');
   } catch (e) { toast(e.message, 'err'); }
+};
+
+/* ================ 抽取路线对比 ================ */
+async function loadExtractCompare() {
+  try {
+    const m = await req('/extract/modes');
+    const cur = m.current_mode;
+    const v = m.vision || {};
+    const status = `当前模式：<b>${cur === 'vision' ? '视觉模型直接看图（实验）' : 'OCR + 文本模型（现状）'}</b>　|　` +
+      `视觉模型：${v.configured ? `已配置（${esc(v.name)} / ${esc(v.model)}）` : '<span style="color:#c0392b">未配置</span>'}`;
+    $('#extractModeStatus').innerHTML = status;
+  } catch (e) { $('#extractModeStatus').innerHTML = `<span style="color:#c0392b">加载失败：${esc(e.message)}</span>`; }
+}
+
+async function setExtractMode(mode) {
+  try {
+    const r = await req('/extract/set-mode', { method: 'POST', body: JSON.stringify({ mode }) });
+    toast(r.message, 'ok');
+    loadExtractCompare();
+  } catch (e) { toast('切换失败：' + e.message, 'err'); }
+}
+$('#modeOcrLlm').onclick = () => setExtractMode('ocr_llm');
+$('#modeVision').onclick = () => setExtractMode('vision');
+
+$('#cmpRun').onclick = async () => {
+  const n = parseInt($('#cmpSampleSize').value, 10) || 5;
+  $('#cmpSummary').textContent = '对比运行中（视觉路线若未配模型会跳过，OCR 路线通常十几秒/张）…';
+  $('#cmpResult').innerHTML = '<div class="empty">运行中…</div>';
+  try {
+    const r = await req('/extract/compare', { method: 'POST', body: JSON.stringify({ sample_size: n }) });
+    const s = r.summary || {};
+    const a = s.route_a || {}, b = s.route_b || {};
+    const fmt = (x) => (x == null ? '—' : (typeof x === 'number' && x < 1 ? Math.round(x * 100) + '%' : x + 'ms'));
+    $('#cmpSummary').innerHTML = `样本 ${s.doc_count} 张（${s.generated_samples ? '自动合成样例' : '本地真实附件'}）　|　` +
+      `OCR路线：成功 ${a.success} 覆盖 ${fmt(a.avg_coverage)} 耗时 ${fmt(a.avg_latency_ms)}　|　` +
+      `视觉路线：成功 ${b.success} 覆盖 ${fmt(b.avg_coverage)} 耗时 ${fmt(b.avg_latency_ms)}` +
+      (s.vision_available ? '' : '　<span style="color:#c0392b">（视觉模型未配置，已跳过）</span>');
+    $('#cmpResult').innerHTML = (r.details || []).length ? (r.details).map((d) => {
+      const row = (x) => `${x.ok ? '✓' : '✗'} 覆盖 ${x.coverage == null ? '—' : Math.round(x.coverage * 100) + '%'} 耗时 ${x.latency_ms || '—'}ms${x.error ? ' ⚠' + esc(x.error) : ''}`;
+      return `<div class="kv-row">
+        <div class="kv-k">${esc(d.name)} <span class="tag tag-skipped">${esc(d.file_ext)}</span></div>
+        <div class="kv-v">
+          <div><b>OCR路线</b> ${row(d.a)} ${d.a.template ? '（' + esc(d.a.template) + '）' : ''}</div>
+          <div><b>视觉路线</b> ${row(d.b)} ${d.b.template ? '（' + esc(d.b.template) + '）' : ''}</div>
+          ${d.note ? '<div class="desc">' + esc(d.note) + '</div>' : ''}
+        </div>
+      </div>`;
+    }).join('') : '<div class="empty">无可用样本</div>';
+  } catch (e) { $('#cmpSummary').textContent = '对比失败：' + e.message; }
 };
 
 /* ================ 启动 ================ */
