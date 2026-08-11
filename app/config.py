@@ -86,6 +86,17 @@ class Settings(BaseSettings):
     # PDF 最多处理页数，防超大文件卡死
     OCR_PDF_MAX_PAGES: int = 20
 
+    # ---------------- OCR 视觉升级（混合识别） ----------------
+    # 默认仍走 RapidOCR（快/免费/确定/有坐标）。
+    # 仅当 RapidOCR 置信度低于阈值、或模板显式要求时，才调用视觉模型二次识别，
+    # 用模型结果覆盖/补充，兼顾准确率与调用成本。
+    OCR_VISION_ENABLED: bool = False
+    # RapidOCR 平均置信度低于该值即触发视觉模型升级（手写/模糊图通常很低）
+    OCR_VISION_MIN_CONFIDENCE: float = 0.6
+    # 这些模板名一旦命中，强制走视觉模型 OCR（用于表格/手写等复杂版式）。
+    # 留空表示仅按置信度阈值自动升级。
+    OCR_VISION_FORCE_TEMPLATES: list[str] = []
+
     # ---------------- LLM 结构化抽取 ----------------
     EXTRACT_ENABLED: bool = True
     OLLAMA_BASE_URL: str = "http://172.17.6.18:11434"

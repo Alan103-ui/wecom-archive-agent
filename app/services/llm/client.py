@@ -297,6 +297,108 @@ def chat_json_vision(
     raise LlmError(f"未知提供方 provider={config.provider!r}（应为 ollama / openai）")
 
 
+def vision_to_text(
+    config: Optional[ModelConfig],
+    image_b64: str,
+    prompt: str,
+    system: Optional[str] = None,
+    image_media_type: str = "image/png",
+    model: Optional[str] = None,
+    timeout: Optional[int] = None,
+    temperature: Optional[float] = None,
+) -> str:
+    """多模态纯文本识别：把图片（base64）送视觉模型，返回其原始文字输出（不做 JSON 解析）。
+
+    与 chat_json_vision 的区别：后者强制 JSON（用于结构化抽取），本函数用于
+    "看图 transcription" 场景——如 OCR 升级、图片全文转写，模型只需忠实输出文字。
+    """
+    if config is None:
+        raise LlmError("未配置可用视觉模型：请到「模型配置」添加一个连接并勾选「视觉抽取(多模态)」")
+
+    model = model or config.model
+    timeout = timeout or config.timeout
+    temperature = temperature if temperature is not None else config.temperature
+
+    if not model:
+        raise LlmError(f"视觉模型连接「{config.name}」未填写模型名")
+    if not image_b64:
+        raise LlmError("图片内容为空，无法做视觉识别")
+
+    if config.provider == PROVIDER_OLLAMA:
+        return _ollama_vision_text(config, image_b64, prompt, system, model, timeout, temperature)
+    if config.provider == PROVIDER_OPENAI:
+        return _openai_vision_text(config, image_b64, prompt, system, model, timeout, temperature, image_media_type)
+    raise LlmError(f"未知提供方 provider={config.provider!r}（应为 ollama / openai）")
+
+
+def _ollama_vision_text(
+    config: ModelConfig, image_b64: str, prompt: str, system: Optional[str],
+    model: str, timeout: int, temperature: float,
+) -> str:
+    """Ollama 视觉纯文本：images 字段直接放 base64，不强制 JSON。"""
+    url = f"{config.base_url.rstrip('/')}/api/chat"
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt, "images": [image_b64]})
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": {"temperature": temperature, "num_ctx": 8192},
+    }
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.TimeoutException as e:
+        raise LlmError(f"调用 Ollama 视觉超时（{timeout}s）：{e}") from e
+    except httpx.HTTPStatusError as e:
+        raise LlmError(f"Ollama 返回 {e.response.status_code}：{e.response.text[:200]}") from e
+    except httpx.HTTPError as e:
+        raise LlmError(f"无法连接 Ollama（{config.base_url}）：{e}") from e
+    return (data.get("message") or {}).get("content", "") or ""
+
+
+def _openai_vision_text(
+    config: ModelConfig, image_b64: str, prompt: str, system: Optional[str],
+    model: str, timeout: int, temperature: float, image_media_type: str,
+) -> str:
+    """OpenAI 兼容视觉纯文本：content 用 parts，不要求 JSON 结构。"""
+    url = _openai_endpoint(config.base_url, "chat/completions")
+    headers = {"Content-Type": "application/json"}
+    if config.api_key:
+        headers["Authorization"] = f"Bearer {config.api_key}"
+
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{image_media_type};base64,{image_b64}"}},
+        ],
+    })
+    payload = {"model": model, "messages": messages, "temperature": temperature, "stream": False}
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.TimeoutException as e:
+        raise LlmError(f"调用视觉模型超时（{timeout}s）：{e}") from e
+    except httpx.HTTPStatusError as e:
+        raise LlmError(f"模型端点返回 {e.response.status_code}：{e.response.text[:200]}") from e
+    except httpx.HTTPError as e:
+        raise LlmError(f"无法连接模型端点（{config.base_url}）：{e}") from e
+    try:
+        return data["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError) as e:
+        raise LlmError(f"视觉模型返回结构异常：{json.dumps(data)[:200]}") from e
+
+
 def _ollama_vision(
     config: ModelConfig, image_b64: str, prompt: str, system: Optional[str],
     model: str, timeout: int, temperature: float,
