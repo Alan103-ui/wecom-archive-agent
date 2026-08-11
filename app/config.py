@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     )
 
     # ---------------- 应用 ----------------
-    APP_NAME: str = "企业微信会话存档智能体"
+    APP_NAME: str = "企业微信会话存档"
     HOST: str = "0.0.0.0"
     # 8000=contract-ai-review 后端, 8001=invoice-ocr, 3000/3001 已占用，本项目用 8002
     PORT: int = 8002

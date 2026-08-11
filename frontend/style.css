@@ -239,7 +239,7 @@ a{color:#60a5fa}
 .subview{display:none}
 .subview.active{display:block}
 
-/* ---------- 流程条（直观说明智能体在做什么） ---------- */
+/* ---------- 流程条（直观说明处理流程） ---------- */
 .flow-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px}
 .flow-bar .node{padding:4px 12px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);white-space:nowrap}
 .flow-bar .node-risk{background:rgba(245,158,11,.15);color:#fbbf24;border-color:#7c4a12}

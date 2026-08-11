@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>企业微信会话存档智能体</title>
+<title>企业微信会话存档</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -14,8 +14,8 @@
   <div class="brand">
     <span class="logo">WA</span>
       <div>
-        <h1>企业微信会话存档智能体</h1>
-        <p id="subTitle">群聊 → OCR → 大模型结构化 → 业务基础数据 <span id="jsVer" class="js-ver">JS:…</span></p>
+        <h1>企业微信会话存档</h1>
+        <p id="subTitle">群聊 → OCR → 信息抽取 → 业务基础数据 <span id="jsVer" class="js-ver">JS:…</span></p>
       </div>
   </div>
   <div class="topbar-right">
@@ -40,7 +40,7 @@
     <div class="flow-bar" id="flowBar">
       <span class="node">群聊消息</span><i>→</i>
       <span class="node">OCR 识别</span><i>→</i>
-      <span class="node">大模型结构化</span><i>→</i>
+      <span class="node">信息抽取</span><i>→</i>
       <span class="node">业务基础数据</span><i>→</i>
       <span class="node node-risk">风险双引擎研判</span><i>→</i>
       <span class="node node-alert">分级预警给管理层</span>
@@ -62,7 +62,7 @@
     <div class="panel">
       <div class="panel-head">
         <h3>对接群一览</h3>
-        <span class="hint">一个智能体同时监控多个群 · 点击卡片进入该群</span>
+        <span class="hint">同时监控多个群 · 点击卡片进入该群</span>
       </div>
       <div class="room-cards" id="roomCards"></div>
     </div>
@@ -114,7 +114,7 @@
         <input id="riskKeyword" placeholder="群/发送人/命中内容…">
         <button class="btn btn-primary" id="riskSearch">查询</button>
         <button class="btn" id="riskRescan">回填重扫</button>
-        <span class="hint">双引擎：关键词规则 + 本地大模型语义</span>
+        <span class="hint">双引擎：关键词规则 + 模型语义研判</span>
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="riskTable">
@@ -494,7 +494,7 @@
         <tbody id="fFields"></tbody></table>
         <button class="btn btn-sm" id="fAddField">+ 添加字段</button>
       </div>
-      <div class="form-row"><label>补充提示词（可选）</label><textarea id="fPrompt" rows="2"></textarea></div>
+      <div class="form-row"><label>补充规则（可选）</label><textarea id="fPrompt" rows="2"></textarea></div>
       <div class="form-row">
         <label>在线调试：粘贴一段文本试抽</label>
         <textarea id="fTestText" rows="3" placeholder="贴一段 OCR 文本，点「试抽」看效果"></textarea>
@@ -540,7 +540,7 @@
         <button type="button" class="btn btn-sm" id="rkLayersPick">选择管理层…</button>
         <div style="margin-top:6px;font-size:12px;color:#6b7280">不选择则按规则严重度兜底推送（低→L1，中→L1/L2，高→L2/L3，严重→L1/L2/L3）</div>
       </div>
-      <div class="form-row"><label>补充说明（可选，附加给大模型）</label><input id="rkLlm" placeholder="可选"></div>
+      <div class="form-row"><label>补充说明（可选）</label><input id="rkLlm" placeholder="可选"></div>
     </div>
     <div class="modal-foot">
       <button class="btn" id="riskModalCancel">取消</button>
@@ -622,6 +622,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=17"></script>
+<script src="/static/app.js?v=18"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-/* 企业微信会话存档智能体 — 管理前端（零依赖原生 JS） */
+/* 企业微信会话存档 — 管理前端（零依赖原生 JS） */
 const API = '/api';
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
@@ -693,7 +693,7 @@ $('#modalSave').onclick = async () => {
 $('#fTryRun').onclick = async () => {
   const text = $('#fTestText').value.trim();
   if (!text) return toast('请先粘贴测试文本', 'err');
-  $('#fTestResult').textContent = '抽取中（本地大模型，通常十几秒）…';
+  $('#fTestResult').textContent = '抽取中（模型推理，通常十几秒）…';
   try {
     const body = { text, template_id: editingTplId };
     const r = await req('/templates/try-run', { method: 'POST', body: JSON.stringify(body) });
@@ -727,7 +727,7 @@ async function loadSystem() {
       <span class="k">数据库</span><span class="v">${dot(h.database.ok)} ${esc(h.database.dialect || h.database.error || '')}</span>
       <span class="k">采集器</span><span class="v">${dot(h.collector.ok)} ${esc(h.collector.mode)} — ${esc(h.collector.detail || '')}</span>
       <span class="k">OCR 引擎</span><span class="v">${dot(h.ocr.ok)} ${esc(h.ocr.detail || h.ocr.engine || '')}</span>
-      <span class="k">大模型</span><span class="v">${dot(h.llm.ok)} ${esc(h.llm.detail || '')}</span>
+      <span class="k">模型连接</span><span class="v">${dot(h.llm.ok)} ${esc(h.llm.detail || '')}</span>
     </div>`;
 
     const s = h.scheduler;
@@ -973,7 +973,7 @@ $('#btnSync').onclick = async function () {
 
 $('#btnRun').onclick = async function () {
   this.disabled = true; this.textContent = '已提交';
-  try { toast((await req('/system/pipeline/run?wait=false', { method: 'POST' })).message + '（OCR+大模型较慢，稍后刷新查看）', 'ok'); }
+  try { toast((await req('/system/pipeline/run?wait=false', { method: 'POST' })).message + '（OCR+模型推理较慢，稍后刷新查看）', 'ok'); }
   catch (e) { toast(e.message, 'err'); }
   finally { setTimeout(() => { this.disabled = false; this.textContent = '跑一轮流水线'; }, 1500); }
 };
@@ -1034,7 +1034,7 @@ async function loadRisks(page = 1) {
         <td>${esc(r.room_id)}</td>
         <td>${esc(r.from_id || '-')}</td>
         <td class="wrap">${esc((r.snippet || '').slice(0, 80))}</td>
-        <td>${r.detection_method === 'llm' ? '<span class="tag tag-processing">LLM</span>' : '<span class="tag tag-done">关键词</span>'}</td>
+        <td>${r.detection_method === 'llm' ? '<span class="tag tag-processing">模型研判</span>' : '<span class="tag tag-done">关键词</span>'}</td>
         <td>${alertTag(r.alert_status)}</td>
         <td>${tag(r.status)}</td>
         <td>
@@ -1069,11 +1069,11 @@ window.showRisk = async function (id) {
       <span class="k">严重度</span><span class="v">${sevTag(r.severity)}</span>
       <span class="k">群</span><span class="v">${esc(r.room_id || '-')}</span>
       <span class="k">发送人</span><span class="v">${esc(r.from_id || '-')}</span>
-      <span class="k">引擎</span><span class="v">${r.detection_method === 'llm' ? 'LLM 语义' : '关键词'}${r.matched_keyword ? '（' + esc(r.matched_keyword) + '）' : ''}</span>
+      <span class="k">引擎</span><span class="v">${r.detection_method === 'llm' ? '模型研判' : '关键词'}${r.matched_keyword ? '（' + esc(r.matched_keyword) + '）' : ''}</span>
       <span class="k">预警状态</span><span class="v">${alertTag(r.alert_status)}</span>
       <span class="k">状态</span><span class="v">${tag(r.status)}</span>
     </div>
-    <h4>命中内容</h4><div class="ocr-text">${esc(r.snippet || '(LLM 语义命中)')}</div>
+    <h4>命中内容</h4><div class="ocr-text">${esc(r.snippet || '(模型语义命中)')}</div>
     ${r.detail ? `<h4>研判</h4><div class="ocr-text">${esc(r.detail)}</div>` : ''}
     <div class="row-btns">
       <button class="btn btn-primary btn-sm" id="rkAck">确认处置</button>
@@ -1487,7 +1487,7 @@ bindSubtabs();
     $('#modePill').textContent = '采集模式：' + (cfg.collector_mode === 'mock' ? 'mock（演示）' : 'archive（会话存档）');
     const dm = (cfg.models || []).find((m) => m.is_default) || (cfg.models || [])[0];
     $('#subTitle').textContent = dm ? `群聊 → OCR → ${dm.model} 结构化 → 业务基础数据`
-                                    : '群聊 → OCR → 大模型结构化 → 业务基础数据';
+                                    : '群聊 → OCR → 信息抽取 → 业务基础数据';
   } catch (e) { /* 后端未就绪时不阻塞页面 */ }
   loadDashboard();
 })();

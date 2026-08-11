@@ -19,7 +19,7 @@ if not exist ".env" (
 
 echo.
 echo ============================================
-echo  企业微信会话存档智能体
+echo  企业微信会话存档
 echo  管理页面: http://127.0.0.1:8002
 echo  接口文档: http://127.0.0.1:8002/docs
 echo  按 Ctrl+C 停止
