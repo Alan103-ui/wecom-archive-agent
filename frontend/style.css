@@ -118,7 +118,14 @@ td.wrap{white-space:normal;max-width:420px;word-break:break-all}
 }
 .toolbar input{min-width:200px}
 .toolbar input:focus,.modal input:focus,.modal textarea:focus{border-color:var(--accent)}
-.chk{display:flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;font-size:13px}
+.chk{display:inline-flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;font-size:13px}
+/* 关键修复：<label> 不能包裹 <input type="checkbox">。
+   Chromium 下点击被 label 包裹的 checkbox，会同时触发 input 自身 toggle 与 label 向 control 合成的 click，
+   两次 toggle 净结果不变，表现为复选框"不能勾选"。
+   改用 input 与 label 同级，通过 for/id 关联：点 input 只 toggle 一次；点 label 文字也只合成一次 click。
+   同时复选框固定 16px，避免被 .form-row input{width:100%} 撑成宽条。 */
+.chk input[type=checkbox]{width:16px;height:16px;margin:0;padding:0;border:0;background:transparent;accent-color:var(--accent);cursor:pointer}
+.chk label{cursor:pointer}
 .hint{color:var(--muted);font-size:12px}
 
 .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px;font-size:13px;color:var(--muted)}
@@ -182,7 +189,7 @@ td.wrap{white-space:normal;max-width:420px;word-break:break-all}
 .modal-foot{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
 .form-row{margin-bottom:14px}
 .form-row>label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
-.form-row input,.form-row textarea{width:100%}
+.form-row input:not([type=checkbox]):not([type=radio]),.form-row textarea{width:100%}
 .form-row.inline{display:flex;gap:24px;align-items:flex-end}
 .field-table{margin-bottom:8px}
 .field-table th{position:static;background:transparent;padding:4px 6px}
