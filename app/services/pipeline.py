@@ -372,15 +372,17 @@ def _process_one(db: Session, att: Attachment, stats: dict) -> None:
         outcome = ocr_engine.recognize(att.local_path)
 
         # 模板强制走视觉 OCR：命中 OCR_VISION_FORCE_TEMPLATES 的复杂版式（表格/手写）模板时，
-        # 用视觉模型结果覆盖 RapidOCR（仅当视觉模型已配置且本次识别成功）。
+        # 用视觉模型结果覆盖 RapidOCR（仅当视觉模型已配置且本次识别成功）。KV 优先，config 兜底。
+        _vision_enabled = get_setting("OCR_VISION_ENABLED", settings.OCR_VISION_ENABLED)
+        _force_templates = get_setting("OCR_VISION_FORCE_TEMPLATES", settings.OCR_VISION_FORCE_TEMPLATES)
         if (
             outcome.success
             and outcome.engine == "rapidocr"
-            and settings.OCR_VISION_ENABLED
-            and settings.OCR_VISION_FORCE_TEMPLATES
+            and _vision_enabled
+            and _force_templates
         ):
             tpl = templates.match_template(db, outcome.text, att.file_ext)
-            if tpl is not None and tpl.name in settings.OCR_VISION_FORCE_TEMPLATES:
+            if tpl is not None and tpl.name in _force_templates:
                 forced = ocr_engine.recognize(att.local_path, force_vision=True)
                 if forced.success:
                     outcome = forced

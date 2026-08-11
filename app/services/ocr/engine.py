@@ -124,8 +124,11 @@ OCR_VISION_PROMPT = (
 
 
 def _ocr_vision_policy() -> tuple[bool, float]:
-    """当前是否启用视觉升级、以及触发阈值。抽成函数便于测试 monkeypatch。"""
-    return settings.OCR_VISION_ENABLED, settings.OCR_VISION_MIN_CONFIDENCE
+    """当前是否启用视觉升级、以及触发阈值。抽成函数便于测试 monkeypatch。KV 优先，config 兜底。"""
+    from app.services.kv_store import get_setting
+    enabled = get_setting("OCR_VISION_ENABLED", settings.OCR_VISION_ENABLED)
+    threshold = get_setting("OCR_VISION_MIN_CONFIDENCE", settings.OCR_VISION_MIN_CONFIDENCE)
+    return bool(enabled), float(threshold)
 
 
 def _get_vision_model():
@@ -340,13 +343,14 @@ def engine_status() -> dict:
         rapidocr_ok = False
         rapidocr_err = str(e)
 
+    from app.services.kv_store import get_setting
     vision_cfg = _get_vision_model()
     return {
         "available": rapidocr_ok,
         "engine": "rapidocr-onnxruntime",
         "error": rapidocr_err,
         "ocr_vision": {
-            "enabled": settings.OCR_VISION_ENABLED,
+            "enabled": bool(get_setting("OCR_VISION_ENABLED", settings.OCR_VISION_ENABLED)),
             "model_configured": vision_cfg is not None,
             "model": vision_cfg.model if vision_cfg else None,
         },

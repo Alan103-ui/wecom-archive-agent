@@ -1114,6 +1114,7 @@ async function loadRiskConfig() {
         </div>
       </div>`).join('') : '<div class="empty">暂无规则</div>';
     loadTimeoutConfig();
+    loadOcrVisionConfig();
   } catch (e) { toast('加载风控配置失败：' + e.message, 'err'); }
 }
 
@@ -1144,6 +1145,45 @@ async function saveTimeoutConfig() {
     toast('保存失败：' + e.message, 'err');
   }
 }
+
+/* OCR 视觉升级配置：KV 存储，前端覆盖（无需改 .env / 重启） */
+async function loadOcrVisionConfig() {
+  try {
+    const s = await req('/settings').catch(() => ({}));
+    $('#ovEnabled').checked = s.OCR_VISION_ENABLED === true;
+    $('#ovConf').value = (typeof s.OCR_VISION_MIN_CONFIDENCE === 'number') ? s.OCR_VISION_MIN_CONFIDENCE : 0.6;
+    const ft = s.OCR_VISION_FORCE_TEMPLATES || [];
+    $('#ovForce').value = Array.isArray(ft) ? ft.join(',') : '';
+  } catch (e) { /* 配置缺失不阻断 */ }
+  // 视觉模型就绪状态（来自 /api/system/health）
+  try {
+    const h = await req('/system/health').catch(() => null);
+    const v = h && h.ocr && h.ocr.ocr_vision;
+    if (v) {
+      const ready = v.model_configured ? `已就绪（${v.model || ''}）` : '未配置视觉模型';
+      const onOff = v.enabled ? '开关已开' : '开关已关';
+      $('#ovStatus').textContent = `视觉模型：${ready}；${onOff}`;
+    }
+  } catch (e) { /* ignore */ }
+}
+async function saveOcrVisionConfig() {
+  const conf = parseFloat($('#ovConf').value);
+  const body = {
+    OCR_VISION_ENABLED: $('#ovEnabled').checked,
+    OCR_VISION_MIN_CONFIDENCE: isNaN(conf) ? 0.6 : Math.min(1, Math.max(0, conf)),
+    OCR_VISION_FORCE_TEMPLATES: $('#ovForce').value.split(/[,，]/).map((x) => x.trim()).filter(Boolean),
+  };
+  try {
+    await req('/settings', { method: 'PUT', body: JSON.stringify(body) });
+    $('#ovMsg').textContent = '已保存';
+    toast('OCR 视觉升级设置已保存', 'ok');
+    loadOcrVisionConfig();
+  } catch (e) {
+    $('#ovMsg').textContent = '保存失败：' + e.message;
+    toast('保存失败：' + e.message, 'err');
+  }
+}
+$('#ovSave').onclick = saveOcrVisionConfig;
 
 $('#toSave').onclick = saveTimeoutConfig;
 $('#toScan').onclick = async () => {

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>企业微信会话存档</title>
-<link rel="stylesheet" href="/static/style.css?v=21">
+<link rel="stylesheet" href="/static/style.css?v=22">
 </head>
 <body>
 
@@ -171,6 +171,29 @@
             <button class="btn btn-primary btn-sm" id="toSave">保存设置</button>
             <button class="btn btn-sm" id="toScan">立即扫描一次</button>
             <span class="muted" id="toMsg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-head"><h3>OCR 视觉升级</h3>
+          <span class="hint">RapidOCR 为主力；低置信度 / 空结果 / 指定模板由视觉模型兜底（需已配置「视觉抽取(多模态)」连接）</span></div>
+        <div class="kv-form" id="ocrVisionBox">
+          <label class="chk"><input type="checkbox" id="ovEnabled"> 启用视觉模型兜底 OCR</label>
+          <div class="kv-row">
+            <span class="kv-label">低置信触发阈值（0~1）</span>
+            <input type="number" id="ovConf" min="0" max="1" step="0.05" value="0.6" style="width:120px">
+          </div>
+          <div class="kv-row">
+            <span class="kv-label">强制走视觉的模板名（逗号分隔）</span>
+            <input type="text" id="ovForce" placeholder="如：发票扫描件,合同手写版" style="width:100%">
+          </div>
+          <div class="kv-actions">
+            <button class="btn btn-primary btn-sm" id="ovSave">保存设置</button>
+            <span class="muted" id="ovMsg"></span>
+          </div>
+          <div class="kv-actions" style="margin-top:8px">
+            <span class="muted" id="ovStatus"></span>
           </div>
         </div>
       </div>
@@ -653,6 +676,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=22"></script>
+<script src="/static/app.js?v=23"></script>
 </body>
 </html>
