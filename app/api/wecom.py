@@ -131,3 +131,18 @@ def external_groupchat(room_id: str, db: Session = Depends(get_db),
         "members": info.get("members") or [],
         "admins": info.get("admins") or [],
     }
+
+
+class TransferIn(BaseModel):
+    handover_userid: str = ""
+    takeover_userid: str = ""
+
+
+@router.post("/transfer", summary="离职成员会话内容存档转接(实际移交)")
+def transfer(body: TransferIn):
+    """把离职成员的会话内容存档实际移交给接管成员（msgaudit/transfer）。"""
+    try:
+        d = wecom_api.transfer_conversation(body.handover_userid, body.takeover_userid)
+    except wecom_api.WeComAPIError as e:
+        raise HTTPException(400, f"errcode={e.errcode} {e.errmsg}")
+    return {"ok": True, **d}

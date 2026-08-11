@@ -92,6 +92,7 @@ def init_db() -> None:
     from app.models import entities  # noqa: F401  确保所有模型已注册到 Base.metadata
     from app.models import risk  # noqa: F401  注册风险与预警模型
     from app.models import model_config  # noqa: F401  注册模型连接配置
+    from app.models import kv  # noqa: F401  注册通用键值设置
 
     from pathlib import Path
 

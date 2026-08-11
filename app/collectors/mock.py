@@ -243,6 +243,7 @@ class MockCollector(BaseCollector):
         ("wrOgQhDgAAv0k1234567890abcdefg", "生产运营群"),
         ("wrOgQhDgAAv0k0987654321zyxwvu", "供应链协同群"),
         ("wrOgQhDgAAcust0abcdefghijklmn", "客户沟通群"),
+        ("wrTimeoutDemo001", "客户售后群(超时演示)"),
     ]
 
     # 固定 seq → 群 映射，让三类高风险场景（价格/私下交易/回扣/投诉/信息泄露/竞品/合规）
@@ -260,7 +261,19 @@ class MockCollector(BaseCollector):
         10: "wrOgQhDgAAcust0abcdefghijklmn",    # 客户沟通群
         11: "wrOgQhDgAAv0k0987654321zyxwvu",     # 供应链协同群
         12: "wrOgQhDgAAv0k1234567890abcdefg",   # 生产运营群
+        # 超时演示：员工一句问候(久) → 客户连发提问且无人回复（验证"服务响应超时"）
+        13: "wrTimeoutDemo001",
+        14: "wrTimeoutDemo001",
+        15: "wrTimeoutDemo001",
     }
+
+    # 超时演示消息：(from_id, 正文, 距今分钟)。from_id 以 wo 开头=外部客户(需回复)；
+    # user_ 开头=企业员工(客服)。员工消息时间久远(曾问候)，客户消息距今较久且其后无回复。
+    _TIMEOUT_MSGS = [
+        ("user_kefu", "您好，这里是售后客服，请问有什么可以帮您？", 180),
+        ("woCustTimeout001", "你好，我的订单什么时候能发货？已经等了好久了", 50),
+        ("woCustTimeout001", "在吗？很急，麻烦尽快回复一下，谢谢", 48),
+    ]
 
     def __init__(self):
         self._fixtures = _ensure_fixtures()
@@ -275,17 +288,34 @@ class MockCollector(BaseCollector):
     def fetch(self, seq: int, limit: int) -> list[NormalizedMessage]:
         # 演示数据总量有限：seq 超过 12 后不再产出，避免无限造数据撑爆库。
         # 注意：返回量必须尊重调用方传入的 limit（page size），不能自行再设更小上限，
-        # 否则 sync_messages 的"不足一批即追上"判定会误判提前退出。仅当 12-seq<=limit
+        # 否则 sync_messages 的"不足一批即追上"判定会误判提前退出。仅当 15-seq<=limit
         # 时本批才不满，此时 seq 已耗尽，确实追上了。
-        if seq >= 12:
+        if seq >= 15:
             return []
 
         msgs: list[NormalizedMessage] = []
         now_ms = int(datetime.now().timestamp() * 1000)
-        n = min(limit, 12 - seq)
+        n = min(limit, 15 - seq)
 
         for i in range(n):
             cur = seq + i + 1
+            # 超时演示消息（seq 13-15）：直接构造，绕过普通 _CHATTER 逻辑
+            if cur >= 13 and cur - 13 < len(self._TIMEOUT_MSGS):
+                frm, text, age = self._TIMEOUT_MSGS[cur - 13]
+                msgs.append(
+                    NormalizedMessage(
+                        seq=cur,
+                        msgid=f"mock_to_{cur}",
+                        msg_type="text",
+                        from_id=frm,
+                        room_id=self._ROOM_BY_SEQ.get(cur, "wrTimeoutDemo001"),
+                        msg_time_ms=now_ms - age * 60_000,
+                        content_text=text,
+                        raw={"msgtype": "text", "_mock": True},
+                    )
+                )
+                continue
+
             room_id = self._ROOM_BY_SEQ.get(cur, self._ROOMS[cur % len(self._ROOMS)][0])
             sender = f"user_{['zhangwei', 'liming', 'wangfang'][cur % 3]}"
 

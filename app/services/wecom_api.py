@@ -221,3 +221,33 @@ def get_external_group(
         "admins": admins,
         "is_external": True,
     }
+
+
+def transfer_conversation(
+    handover_userid: str,
+    takeover_userid: str,
+    corpid: str | None = None,
+    corpsecret: str | None = None,
+    base_url: str | None = None,
+) -> dict:
+    """离职成员会话内容存档转接（官方 msgaudit/transfer，doc 92951）。
+
+    handover_userid = 已离职且待转接成员；takeover_userid = 接管成员
+    （需在职且已开启会话内容存档）。调用后该离职成员的会话存档移交接管人。
+    """
+    _require_archive()
+    if not handover_userid:
+        raise WeComAPIError(-101, "handover_userid（离职成员）不能为空")
+    if not takeover_userid:
+        raise WeComAPIError(-102, "takeover_userid（接管成员）不能为空")
+    d = _post(
+        "/cgi-bin/msgaudit/transfer",
+        {"handover_userid": handover_userid, "takeover_userid": takeover_userid},
+        corpid, corpsecret, base_url,
+    )
+    return {
+        "handover_userid": handover_userid,
+        "takeover_userid": takeover_userid,
+        "errcode": d.get("errcode", 0),
+        "errmsg": d.get("errmsg", "ok"),
+    }

@@ -230,6 +230,13 @@ def rescan(room_id: str | None = Body(None, embed=True), limit: int | None = Bod
     return ActionResult(message=f"已重置 {n} 条消息为待扫描，下一轮风险作业将重扫", data={"count": n})
 
 
+@router.post("/timeout-scan", response_model=ActionResult, summary="立即执行超时回复扫描")
+def timeout_scan():
+    """手动触发一次超时回复提醒扫描（调度作业之外，便于即时验证/补扫）。"""
+    stats = pipeline.reply_timeout_scan()
+    return ActionResult(message="超时回复扫描完成", data=stats)
+
+
 # ---------------------------------------------------------------- 规则
 @router.get("/rules", summary="风险规则列表")
 def list_rules(db: Session = Depends(get_db)):

@@ -611,6 +611,37 @@ def risk_scan(batch_size: int | None = None) -> dict:
     return stats
 
 
+def reply_timeout_scan() -> dict:
+    """
+    超时回复提醒：跨群聚合会话时间线，识别"客户消息后超时无员工回复"并落库预警。
+
+    与逐条风险扫描（risk_scan）解耦为独立作业；按 (首条客户消息, 分类) 去重，
+    重复运行不会重复建事件。配置（开关/阈值/严重度）优先读 KV，回落 config 默认。
+    """
+    if not settings.RISK_ENABLED:
+        return {"skipped": True, "checked_rooms": 0, "events": 0, "errors": []}
+
+    db = SessionLocal()
+    try:
+        from app.services.risk import timeout
+
+        stats = timeout.scan_reply_timeouts(db)
+        db.commit()
+    except Exception as e:  # noqa: BLE001
+        logger.exception("超时回复扫描异常：%s", e)
+        stats = {"skipped": False, "checked_rooms": 0, "events": 0,
+                 "errors": [str(e)[:200]]}
+    finally:
+        db.close()
+
+    if stats.get("events"):
+        logger.info(
+            "超时回复扫描：查 %d 群，命中 %d 条超时事件",
+            stats.get("checked_rooms", 0), stats.get("events", 0),
+        )
+    return stats
+
+
 def risk_rescan(db: Session, room_id: str | None = None, limit: int | None = None) -> int:
     """把已扫消息标记为待扫（回填/重扫）。返回重置条数"""
     stmt = update(ChatMessage).where(ChatMessage.risk_scanned == True)  # noqa: E712

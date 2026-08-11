@@ -907,6 +907,26 @@ $('#wcExternalGroup').onclick = async () => {
   finally { $('#wcExternalGroup').disabled = false; }
 };
 
+$('#wcTransfer').onclick = async () => {
+  const handover = $('#wcHandover').value.trim();
+  const takeover = $('#wcTakeover').value.trim();
+  const msg = $('#wcTransferMsg');
+  if (!handover || !takeover) { msg.textContent = '请填写离职成员与接管成员 userid'; msg.style.color = '#dc2626'; return; }
+  if (handover === takeover) { msg.textContent = '离职成员与接管成员不能相同'; msg.style.color = '#dc2626'; return; }
+  $('#wcTransfer').disabled = true;
+  msg.textContent = '转接中…';
+  msg.style.color = '#94a3b8';
+  try {
+    const r = await req('/wecom/transfer', { method: 'POST', body: JSON.stringify({ handover_userid: handover, takeover_userid: takeover }) });
+    msg.textContent = `✓ 已转接 ${r.handover_userid} → ${r.takeover_userid}`;
+    msg.style.color = '#16a34a';
+  } catch (e) {
+    msg.textContent = '转接失败：' + e.message;
+    msg.style.color = '#dc2626';
+  }
+  finally { $('#wcTransfer').disabled = false; }
+};
+
 $('#wcSingleAgree').onclick = async () => {
   const userid = $('#wcAgreeUserid').value.trim();
   const roomids = $('#wcAgreeRoomids').value.split(',').map((s) => s.trim()).filter(Boolean);
@@ -1092,25 +1112,49 @@ async function loadRiskConfig() {
           <button class="btn btn-sm btn-warn" onclick="delRule('${t.id}')">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">暂无规则</div>';
-
-    $('#layerList').innerHTML = layers.length ? layers.map((l) => `
-      <div class="layer-card">
-        <h4>${esc(l.name)} <span class="lvl">Lv ${l.level}</span> <span class="tag tag-skipped">${esc(l.id)}</span></h4>
-        <div class="desc">${esc(l.description || '')}</div>
-        ${(l.targets || []).map((t) => `<div class="target-row">
-            <span class="ch">${esc(t.channel)}</span>
-            <span class="tg">${esc(t.label || t.target || '')}</span>
-            <span class="act">
-              <label class="chk"><input type="checkbox" data-tid="${t.id}" ${t.enabled ? 'checked' : ''} onchange="toggleTarget('${t.id}',this.checked)"> 启用</label>
-              <button class="btn btn-sm" onclick="testLayer('${l.id}')">测试</button>
-              <button class="btn btn-sm btn-warn" onclick="delTarget('${t.id}')">删除</button>
-            </span>
-          </div>`).join('') || '<div class="desc">该层暂无投递目标</div>'}
-        <div class="row-btns"><button class="btn btn-sm" onclick="addTarget('${l.id}')">+ 添加投递目标</button>
-          <button class="btn btn-sm btn-warn" onclick="delLayer('${l.id}')">删除层</button></div>
-      </div>`).join('') : '<div class="empty">暂无管理层</div>';
+    loadTimeoutConfig();
   } catch (e) { toast('加载风控配置失败：' + e.message, 'err'); }
 }
+
+/* 超时回复提醒配置：从 /settings 读取并允许前端覆盖（无需改 .env / 重启） */
+async function loadTimeoutConfig() {
+  try {
+    const s = await req('/settings').catch(() => ({}));
+    const t = (s && s.risk_timeout) || {};
+    $('#toEnabled').checked = t.enabled !== false;
+    $('#toMinutes').value = t.minutes || 30;
+    $('#toSeverity').value = t.severity || 'medium';
+  } catch (e) { /* 配置缺失不阻断 */ }
+}
+async function saveTimeoutConfig() {
+  const body = {
+    risk_timeout: {
+      enabled: $('#toEnabled').checked,
+      minutes: parseInt($('#toMinutes').value, 10) || 30,
+      severity: $('#toSeverity').value,
+    },
+  };
+  try {
+    await req('/settings', { method: 'PUT', body: JSON.stringify(body) });
+    $('#toMsg').textContent = '已保存';
+    toast('超时回复提醒设置已保存', 'ok');
+  } catch (e) {
+    $('#toMsg').textContent = '保存失败：' + e.message;
+    toast('保存失败：' + e.message, 'err');
+  }
+}
+
+$('#toSave').onclick = saveTimeoutConfig;
+$('#toScan').onclick = async () => {
+  try {
+    const r = await req('/risks/timeout-scan', { method: 'POST' });
+    $('#toMsg').textContent = '扫描完成：' + (r && r.data ? JSON.stringify(r.data) : '');
+    toast('已触发一次超时扫描', 'ok');
+  } catch (e) {
+    $('#toMsg').textContent = '扫描失败：' + e.message;
+    toast('扫描失败：' + e.message, 'err');
+  }
+};
 
 async function openRiskModal(rule) {
   editingRuleId = rule ? rule.id : null;

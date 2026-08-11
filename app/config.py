@@ -114,6 +114,14 @@ class Settings(BaseSettings):
     # 单轮风险扫描最多处理多少条未扫消息
     RISK_SCAN_BATCH: int = 50
 
+    # 超时回复提醒（基于会话时间线聚合：客户消息后 N 分钟无员工回复即告警）
+    # 可在前端「风控配置 → 超时回复提醒」覆盖；此处为默认值/环境变量兜底
+    RISK_TIMEOUT_ENABLED: bool = True
+    RISK_TIMEOUT_MINUTES: int = 30
+    RISK_TIMEOUT_SEVERITY: str = "medium"
+    # 超时扫描作业间隔（秒），独立于逐条风险扫描
+    RISK_TIMEOUT_INTERVAL_SECONDS: int = 120
+
     # 企微应用消息（精准推给具体人/部门用，与群机器人 Webhook 互补）
     WECOM_AGENT_ID: str = ""
     WECOM_AGENT_SECRET: str = ""

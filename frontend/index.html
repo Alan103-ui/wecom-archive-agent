@@ -148,6 +148,32 @@
           <div id="layerList"></div>
         </div>
       </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-head"><h3>超时回复提醒</h3>
+          <span class="hint">客户消息后超过阈值无员工回复，自动生成「服务响应超时」风险事件</span></div>
+        <div class="kv-form" id="timeoutBox">
+          <label class="chk"><input type="checkbox" id="toEnabled"> 启用超时回复提醒</label>
+          <div class="kv-row">
+            <span class="kv-label">超时阈值（分钟）</span>
+            <input type="number" id="toMinutes" min="1" max="1440" value="30" style="width:120px">
+          </div>
+          <div class="kv-row">
+            <span class="kv-label">严重度</span>
+            <select id="toSeverity">
+              <option value="low">低</option>
+              <option value="medium" selected>中</option>
+              <option value="high">高</option>
+              <option value="critical">严重</option>
+            </select>
+          </div>
+          <div class="kv-actions">
+            <button class="btn btn-primary btn-sm" id="toSave">保存设置</button>
+            <button class="btn btn-sm" id="toScan">立即扫描一次</button>
+            <span class="muted" id="toMsg"></span>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -351,12 +377,26 @@
         <div class="panel-head" style="margin-top:18px">
           <h3>离职成员会话转接</h3>
         </div>
-        <div class="desc">拉取已离职、且会话内容存档需由他人转接的成员列表；转接动作需在「系统 → 调度与游标」或对接 HR 离职流程后处理。</div>
+        <div class="desc">拉取已离职、且会话内容存档需由他人转接的成员列表；确认接管人后点「转接」实际移交其会话存档。</div>
         <div class="row-btns">
           <button class="btn" id="wcQuitList">拉取离职需转接成员</button>
           <span class="hint" id="wcQuitMsg"></span>
         </div>
         <div class="tpl-list" id="wcQuitBox" style="margin-top:10px"></div>
+        <div class="grid-2" style="margin-top:10px">
+          <div class="form-row">
+            <label>离职成员 userid（handover）</label>
+            <input id="wcHandover" placeholder="如 zhangsan">
+          </div>
+          <div class="form-row">
+            <label>接管成员 userid（takeover，需在职且已开存档）</label>
+            <input id="wcTakeover" placeholder="如 lisi">
+          </div>
+        </div>
+        <div class="row-btns">
+          <button class="btn" id="wcTransfer">转接会话存档</button>
+          <span class="hint" id="wcTransferMsg"></span>
+        </div>
 
         <div class="panel-head" style="margin-top:18px">
           <h3>单聊会话存档同意情况</h3>
@@ -582,6 +622,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=16"></script>
+<script src="/static/app.js?v=17"></script>
 </body>
 </html>

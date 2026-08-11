@@ -10,6 +10,7 @@ from app.api import (
     records,
     risks,
     rooms,
+    settings as settings_api,
     system,
     templates,
     wecom,
@@ -25,6 +26,7 @@ api_router.include_router(templates.router, tags=["抽取模板"])
 api_router.include_router(risks.router, prefix="/risks", tags=["风险预警"])
 api_router.include_router(models.router, prefix="/models", tags=["模型配置"])
 api_router.include_router(rooms.router, prefix="/rooms", tags=["群管理"])
+api_router.include_router(settings_api.router, prefix="/settings", tags=["设置"])
 api_router.include_router(wecom_config.router, tags=["企业微信配置"])
 api_router.include_router(wecom.router, prefix="/wecom", tags=["企业微信辅助接口"])
 

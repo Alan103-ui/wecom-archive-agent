@@ -94,6 +94,37 @@ def detect_keyword(text: str, rules: Iterable[RiskRule], room_id: str) -> list[R
     return hits
 
 
+# 轻量负面情感词库（规则兜底，毫秒级、零成本；不替代 LLM 语义研判）
+_NEGATIVE_WORDS = [
+    "投诉", "差评", "太差", "垃圾", "骗", "欺诈", "欺骗", "失望", "愤怒", "气死",
+    "威胁", "曝光", "媒体", "监管", "退货", "退款", "赔偿", "恶劣", "无语",
+    "坑", "黑猫", "12315", "忽悠", "敷衍", "态度差", "再也不", "什么破", "投诉你",
+    "找你们领导", "工信部", "消协", "太离谱", "受不了", "忍无可忍",
+]
+# 否定/缓和前缀，出现则降低负面判定权重（简单处理：命中即不算强负面）
+_NEGATIVE_NEGATORS = ["不", "没", "没有", "未", "别", "无", "非"]
+
+
+def analyze_sentiment(text: str) -> str:
+    """返回 negative / neutral / positive。规则词库兜底，零成本。
+
+    仅做"是否含负面表达"的粗判，用于补位"客户投诉/舆情"分类，
+    不替代 LLM 语义研判。命中负面词且无否定前缀包裹时判 negative。
+    """
+    if not text or not text.strip():
+        return "neutral"
+    for w in _NEGATIVE_WORDS:
+        idx = text.find(w)
+        if idx < 0:
+            continue
+        # 检查是否紧跟否定前缀（如"不差""没有骗"）— 取词前 2 字判断
+        prefix = text[max(0, idx - 2):idx]
+        if any(neg in prefix for neg in _NEGATIVE_NEGATORS):
+            continue
+        return "negative"
+    return "neutral"
+
+
 _LLM_SYSTEM = (
     "你是企业合规风控助手。判断一条企业微信工作群（采购/客户沟通场景）聊天消息"
     "是否含有业务风险。只输出 JSON，不要解释。\n"
@@ -148,12 +179,24 @@ def scan(text: str, rules: list[RiskRule], room_id: str) -> list[RiskHit]:
     """双引擎合并扫描。返回去重前的原始命中列表（归并在 pipeline 完成）"""
     kw_hits = detect_keyword(text, rules, room_id)
 
-    # 省成本模式：关键词已命中则不再调 LLM
+    # 省成本模式：关键词已命中则不再调 LLM / 情感兜底
     if settings.RISK_LLM_ONLY_WHEN_KEYWORD_MISS and kw_hits:
         return kw_hits
 
-    llm_hits = detect_llm(text, room_id)
-    return kw_hits + llm_hits
+    hits: list[RiskHit] = list(kw_hits)
+    hits += detect_llm(text, room_id)
+
+    # 情感兜底：关键词未命中"客户投诉/舆情"时，补一个负面情感提示
+    if not any(h.category == cat.CATEGORY_COMPLAINT for h in kw_hits):
+        if analyze_sentiment(text) == "negative":
+            hits.append(RiskHit(
+                category=cat.CATEGORY_COMPLAINT,
+                severity=cat.SEVERITY_MEDIUM,
+                detection_method="sentiment",
+                snippet=text[:60],
+                detail="负面情感（潜在投诉/舆情）",
+            ))
+    return hits
 
 
 def load_rules(db: Session) -> list[RiskRule]:

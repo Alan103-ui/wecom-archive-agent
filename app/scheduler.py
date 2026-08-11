@@ -28,6 +28,7 @@ last_run: dict = {
     "sync": {"at": None, "ok": None, "stats": None, "error": None},
     "pipeline": {"at": None, "ok": None, "stats": None, "error": None},
     "risk": {"at": None, "ok": None, "stats": None, "error": None},
+    "timeout": {"at": None, "ok": None, "stats": None, "error": None},
 }
 
 
@@ -67,6 +68,15 @@ def risk_job() -> None:
         _record("risk", False, error=str(e)[:500])
 
 
+def timeout_job() -> None:
+    try:
+        stats = pipeline.reply_timeout_scan()
+        _record("timeout", True, stats)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("定时超时回复扫描失败：%s", e)
+        _record("timeout", False, error=str(e)[:500])
+
+
 def start_scheduler() -> BackgroundScheduler | None:
     global _scheduler
     if not settings.SCHEDULER_ENABLED:
@@ -100,6 +110,14 @@ def start_scheduler() -> BackgroundScheduler | None:
         seconds=settings.RISK_SCAN_INTERVAL_SECONDS,
         id="risk_scan",
         name="风险检测与分级预警",
+        next_run_time=datetime.now(),
+    )
+    sch.add_job(
+        timeout_job,
+        "interval",
+        seconds=settings.RISK_TIMEOUT_INTERVAL_SECONDS,
+        id="reply_timeout_scan",
+        name="超时回复提醒扫描",
         next_run_time=datetime.now(),
     )
     sch.start()
