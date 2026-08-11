@@ -1,0 +1,32 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+
+# ---- Runtime data (SQLite 含 API Key，禁止提交) ----
+data/
+
+# ---- Logs ----
+*.log
+
+# ---- Secrets / env ----
+.env
+.env.*
+!.env.example
+
+# ---- Node ----
+node_modules/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+.idea/
+
+# ---- 验证截图 / 临时文件 ----
+shot_*.png
+shot-*.png
+idx_check.html

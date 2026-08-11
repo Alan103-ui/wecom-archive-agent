@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>企业微信会话存档智能体</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div id="errBar" class="err-bar" style="display:none"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">WA</span>
+      <div>
+        <h1>企业微信会话存档智能体</h1>
+        <p id="subTitle">群聊 → OCR → 大模型结构化 → 业务基础数据 <span id="jsVer" class="js-ver">JS:…</span></p>
+      </div>
+  </div>
+  <div class="topbar-right">
+    <span class="pill" id="modePill">采集模式 —</span>
+    <button class="btn btn-primary" id="btnSync">立即同步</button>
+    <button class="btn" id="btnRun">跑一轮流水线</button>
+    <a class="btn btn-ghost" href="/docs" target="_blank">API 文档</a>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-view="dashboard">📊 总览</button>
+  <button class="tab" data-view="rooms">👥 群与监控</button>
+  <button class="tab" data-view="risks">⚠️ 风险预警</button>
+  <button class="tab" data-view="data">📦 数据资产</button>
+  <button class="tab" data-view="config">⚙️ 配置</button>
+</nav>
+
+<main>
+  <!-- ============ 总览 ============ -->
+  <section class="view active" id="view-dashboard">
+    <div class="flow-bar" id="flowBar">
+      <span class="node">群聊消息</span><i>→</i>
+      <span class="node">OCR 识别</span><i>→</i>
+      <span class="node">大模型结构化</span><i>→</i>
+      <span class="node">业务基础数据</span><i>→</i>
+      <span class="node node-risk">风险双引擎研判</span><i>→</i>
+      <span class="node node-alert">分级预警给管理层</span>
+    </div>
+
+    <div class="cards" id="statCards"></div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <h3>附件处理进度</h3>
+        <div id="stageBars"></div>
+      </div>
+      <div class="panel">
+        <h3>数据分布</h3>
+        <div class="dist" id="distBox"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h3>对接群一览</h3>
+        <span class="hint">一个智能体同时监控多个群 · 点击卡片进入该群</span>
+      </div>
+      <div class="room-cards" id="roomCards"></div>
+    </div>
+  </section>
+
+  <!-- ============ 群与监控 ============ -->
+  <section class="view" id="view-rooms">
+    <div class="cards" id="roomStatCards"></div>
+    <div class="toolbar room-toolbar">
+      <span class="hint">采集开关：</span>
+      <button class="btn btn-sm btn-primary" id="roomEnableAll">全部开启采集</button>
+      <button class="btn btn-sm" id="roomDisableAll">全部关闭采集</button>
+      <span class="hint" id="roomToggleHint">关闭后该群新消息不再入库（历史数据保留）</span>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <h3>监控中的群</h3>
+        <span class="hint">点击卡片进入该群 · 右上开关即时开启 / 关闭采集</span>
+      </div>
+      <div class="room-cards" id="roomList"></div>
+    </div>
+  </section>
+
+  <!-- ============ 风险预警 ============ -->
+  <section class="view" id="view-risks">
+    <div class="subtabs">
+      <button class="subtab active" data-sub="risk-events">风险事件</button>
+      <button class="subtab" data-sub="risk-routing">路由全景</button>
+      <button class="subtab" data-sub="risk-config">规则与层</button>
+    </div>
+
+    <div class="subview active" id="sub-risk-events">
+      <div class="cards" id="riskStatCards"></div>
+      <div class="toolbar">
+        <select id="riskSev">
+          <option value="">全部严重度</option>
+          <option value="low">低</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+          <option value="critical">严重</option>
+        </select>
+        <select id="riskStatus">
+          <option value="">全部状态</option>
+          <option value="pending">待处置</option>
+          <option value="acknowledged">已确认</option>
+          <option value="resolved">已解决</option>
+          <option value="ignored">已忽略</option>
+        </select>
+        <input id="riskKeyword" placeholder="群/发送人/命中内容…">
+        <button class="btn btn-primary" id="riskSearch">查询</button>
+        <button class="btn" id="riskRescan">回填重扫</button>
+        <span class="hint">双引擎：关键词规则 + 本地大模型语义</span>
+      </div>
+      <div class="panel">
+        <div class="table-wrap"><table id="riskTable">
+          <thead><tr><th>时间</th><th>分类</th><th>严重度</th><th>群</th><th>发送人</th><th>命中内容</th><th>引擎</th><th>预警</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <div class="pager" id="riskPager"></div>
+      </div>
+    </div>
+
+    <div class="subview" id="sub-risk-routing">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>预警路由全景</h3>
+          <span class="hint">谁的消息命中什么规则 → 推给哪个管理层（L1 基层 → L3 高层）</span>
+        </div>
+        <div id="routingBox"></div>
+      </div>
+    </div>
+
+    <div class="subview" id="sub-risk-config">
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head"><h3>风险规则</h3>
+            <button class="btn btn-primary btn-sm" id="ruleNew">新建规则</button></div>
+          <div class="tpl-list" id="ruleList"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>管理层与投递目标</h3>
+            <button class="btn btn-primary btn-sm" id="layerNew">新建管理层</button></div>
+          <div id="layerList"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 数据资产 ============ -->
+  <section class="view" id="view-data">
+    <div class="subtabs">
+      <button class="subtab active" data-sub="data-records">结构化数据</button>
+      <button class="subtab" data-sub="data-attachments">附件与 OCR</button>
+      <button class="subtab" data-sub="data-messages">聊天记录</button>
+    </div>
+
+    <div class="subview active" id="sub-data-records">
+      <div class="toolbar">
+        <select id="recTemplate"></select>
+        <input id="recKeyword" placeholder="在抽取字段中搜索…">
+        <select id="recStatus">
+          <option value="">全部状态</option>
+          <option value="done">成功</option>
+          <option value="failed">失败</option>
+          <option value="need_review">待复核</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="recFlatten" checked> 宽表视图</label>
+        <button class="btn btn-primary" id="recSearch">查询</button>
+        <button class="btn" id="recExport">导出 Excel</button>
+      </div>
+      <div class="panel">
+        <div class="table-wrap" id="recTableWrap"><div class="empty">点查询加载数据</div></div>
+        <div class="pager" id="recPager"></div>
+      </div>
+    </div>
+
+    <div class="subview" id="sub-data-attachments">
+      <div class="toolbar">
+        <input id="attKeyword" placeholder="文件名…">
+        <select id="attOcr">
+          <option value="">OCR 状态</option>
+          <option value="pending">待处理</option>
+          <option value="done">已完成</option>
+          <option value="failed">失败</option>
+          <option value="skipped">已跳过</option>
+        </select>
+        <select id="attExtract">
+          <option value="">抽取状态</option>
+          <option value="pending">待处理</option>
+          <option value="done">已完成</option>
+          <option value="failed">失败</option>
+          <option value="skipped">已跳过</option>
+        </select>
+        <button class="btn btn-primary" id="attSearch">查询</button>
+        <button class="btn btn-warn" id="attResetFailed">重置失败项</button>
+      </div>
+      <div class="panel">
+        <div class="table-wrap"><table id="attTable">
+          <thead><tr><th>文件</th><th>类型</th><th>大小</th><th>下载</th><th>OCR</th><th>抽取</th><th>时间</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <div class="pager" id="attPager"></div>
+      </div>
+    </div>
+
+    <div class="subview" id="sub-data-messages">
+      <div class="toolbar">
+        <input id="msgKeyword" placeholder="正文关键词…">
+        <select id="msgType">
+          <option value="">全部类型</option>
+          <option value="text">文本</option>
+          <option value="image">图片</option>
+          <option value="file">文件</option>
+          <option value="video">视频</option>
+          <option value="voice">语音</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="msgHasAtt"> 仅带附件</label>
+        <button class="btn btn-primary" id="msgSearch">查询</button>
+      </div>
+      <div class="panel">
+        <div class="table-wrap"><table id="msgTable">
+          <thead><tr><th>seq</th><th>时间</th><th>发送人</th><th>类型</th><th>内容</th><th>附件</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <div class="pager" id="msgPager"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 配置 ============ -->
+  <section class="view" id="view-config">
+    <div class="subtabs">
+      <button class="subtab active" data-sub="cfg-wecom">企业微信</button>
+      <button class="subtab" data-sub="cfg-templates">抽取模板</button>
+      <button class="subtab" data-sub="cfg-models">模型配置</button>
+      <button class="subtab" data-sub="cfg-system">系统</button>
+    </div>
+
+    <div class="subview active" id="sub-cfg-wecom">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>企业微信接口配置</h3>
+          <span class="hint" id="wecomSrcHint"></span>
+        </div>
+        <div class="desc">对接企业微信会话内容存档（msgaudit）。保存后即时重新加载采集器生效；切换为「真实存档」前需准备 SDK 动态库与 RSA 私钥。</div>
+        <div class="grid-2">
+          <div class="form-row">
+            <label>运行模式</label>
+            <select id="wcMode">
+              <option value="mock">mock（演示，无需企业微信资源）</option>
+              <option value="archive">archive（真实会话存档）</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>单次拉取条数（1-1000）</label>
+            <input id="wcFetchLimit" type="number" min="1" max="1000">
+          </div>
+          <div class="form-row">
+            <label>Corp ID（企业 ID）</label>
+            <input id="wcCorpId" placeholder="wwxxxxxx">
+          </div>
+          <div class="form-row">
+            <label>会话存档 Secret</label>
+            <input id="wcSecret" type="password" autocomplete="off" placeholder="管理后台→会话内容存档→Secret">
+          </div>
+          <div class="form-row">
+            <label>SDK 动态库路径</label>
+            <input id="wcSdkPath" placeholder="data/sdk/WeWorkFinanceSdk.dll">
+          </div>
+          <div class="form-row">
+            <label>SDK 超时（秒）</label>
+            <input id="wcTimeout" type="number" min="1">
+          </div>
+          <div class="form-row" style="grid-column:1/-1">
+            <label>RSA 私钥（PEM，PKCS#1 / PKCS#8）</label>
+            <textarea id="wcKey" rows="5" placeholder="-----BEGIN RSA PRIVATE KEY----- ..."></textarea>
+            <label class="chk" style="margin-top:6px"><input type="checkbox" id="wcShowKey"> 显示私钥明文</label>
+          </div>
+          <div class="form-row">
+            <label>代理地址（可选）</label>
+            <input id="wcProxy" placeholder="socks5://10.0.0.1:8081">
+          </div>
+          <div class="form-row">
+            <label>代理密码（可选）</label>
+            <input id="wcProxyPass" type="password" autocomplete="off">
+          </div>
+          <div class="form-row">
+            <label>企微应用 AgentID（可选，应用消息推送）</label>
+            <input id="wcAgentId" placeholder="1000002">
+          </div>
+          <div class="form-row">
+            <label>企微应用 Secret（可选）</label>
+            <input id="wcAgentSecret" type="password" autocomplete="off">
+          </div>
+          <div class="form-row" style="grid-column:1/-1">
+            <label>API 根地址（access_token / 群信息 / 成员列表等 HTTP 接口）</label>
+            <input id="wcApiBase" placeholder="https://qyapi.weixin.qq.com">
+            <span class="hint">默认官方地址；国密版 / 第三方服务商场景改为对应域名</span>
+          </div>
+          <div class="form-row" style="grid-column:1/-1">
+            <label>白名单群 roomid（逗号分隔，留空=全部）</label>
+            <input id="wcFilterRooms" placeholder="wrOgQhDgAA...,wrOgQhDgBB...">
+          </div>
+          <div class="form-row" style="grid-column:1/-1">
+            <label class="chk"><input type="checkbox" id="wcOnlyGroup" checked> 仅采集群聊（跳过单聊）</label>
+          </div>
+        </div>
+        <div class="row-btns">
+          <button class="btn btn-primary" id="wcSave">保存并重新加载采集器</button>
+          <button class="btn" id="wcVerify">验证连通性</button>
+          <span class="hint" id="wcSavedAt"></span>
+          <span class="hint" id="wcVerifyMsg"></span>
+        </div>
+        <div class="desc" style="margin-top:10px;color:#b45309">⚠ 私钥与 Secret 将以明文存于本地数据库与文件，仅限内网管理使用。</div>
+
+        <div class="panel-head" style="margin-top:18px">
+          <h3>辅助接口（需 archive 模式 + 有效凭证）</h3>
+        </div>
+        <div class="desc">拉取「已开启会话存档的成员」，用于核对哪些人/部门在监控范围内。仅真实对接企业微信时可拉取，mock 模式会提示不可用。</div>
+        <div class="row-btns">
+          <button class="btn" id="wcPermitUsers">拉取已授权存档成员</button>
+          <span class="hint" id="wcPermitMsg"></span>
+        </div>
+        <div class="tpl-list" id="wcPermitBox" style="margin-top:10px"></div>
+
+        <div class="panel-head" style="margin-top:18px">
+          <h3>离职成员会话转接</h3>
+        </div>
+        <div class="desc">拉取已离职、且会话内容存档需由他人转接的成员列表；转接动作需在「系统 → 调度与游标」或对接 HR 离职流程后处理。</div>
+        <div class="row-btns">
+          <button class="btn" id="wcQuitList">拉取离职需转接成员</button>
+          <span class="hint" id="wcQuitMsg"></span>
+        </div>
+        <div class="tpl-list" id="wcQuitBox" style="margin-top:10px"></div>
+
+        <div class="panel-head" style="margin-top:18px">
+          <h3>单聊会话存档同意情况</h3>
+        </div>
+        <div class="desc">查询某员工在指定单聊会话中是否已同意会话内容存档（1=同意 / 2=不同意 / 3=未设置）。</div>
+        <div class="grid-2">
+          <div class="form-row">
+            <label>员工 userid</label>
+            <input id="wcAgreeUserid" placeholder="如 zhansan">
+          </div>
+          <div class="form-row" style="grid-column:1/-1">
+            <label>会话 roomid 列表（逗号分隔，最多 100 个）</label>
+            <input id="wcAgreeRoomids" placeholder="wrOgQhDgAA...,wrOgQhDgBB...">
+          </div>
+        </div>
+        <div class="row-btns">
+          <button class="btn" id="wcSingleAgree">查询单聊同意情况</button>
+          <span class="hint" id="wcAgreeMsg"></span>
+        </div>
+        <div class="tpl-list" id="wcAgreeBox" style="margin-top:10px"></div>
+      </div>
+    </div>
+
+    <div class="subview" id="sub-cfg-templates">
+      <div class="toolbar">
+        <button class="btn btn-primary" id="tplNew">新建模板</button>
+        <button class="btn" id="tplSeed">恢复默认模板</button>
+        <span class="hint">改模板即改业务字段，不用改代码</span>
+      </div>
+      <div class="tpl-list" id="tplList"></div>
+    </div>
+
+    <div class="subview" id="sub-cfg-models">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>模型连接</h3>
+          <button class="btn btn-primary btn-sm" id="modelNew">新建模型连接</button>
+        </div>
+        <div class="desc" id="modelRoleBanner">角色绑定加载中…</div>
+        <div class="tpl-list" id="modelList"></div>
+      </div>
+    </div>
+
+    <div class="subview" id="sub-cfg-system">
+      <div class="grid-2">
+        <div class="panel">
+          <h3>组件健康</h3>
+          <div id="healthBox"></div>
+        </div>
+        <div class="panel">
+          <h3>调度与游标</h3>
+          <div id="schedBox"></div>
+          <div class="row-btns">
+            <button class="btn" id="btnPause">暂停调度</button>
+            <button class="btn" id="btnResume">恢复调度</button>
+            <button class="btn" id="btnReloadCollector">重载采集器</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>当前配置</h3>
+        <pre id="configBox" class="code"></pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 抽屉：详情 -->
+<div class="drawer-mask" id="drawerMask"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head">
+    <h3 id="drawerTitle">详情</h3>
+    <button class="btn btn-ghost" id="drawerClose">关闭</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<!-- 模板编辑弹窗 -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal">
+    <div class="modal-head"><h3 id="modalTitle">编辑模板</h3></div>
+    <div class="modal-body">
+      <div class="form-row"><label>模板名称</label><input id="fName" placeholder="如：质检报告"></div>
+      <div class="form-row"><label>说明</label><input id="fDesc"></div>
+      <div class="form-row inline">
+        <span><label>优先级</label><input id="fPriority" type="number" value="10" style="width:90px"></span>
+        <span><label class="chk"><input type="checkbox" id="fEnabled" checked> 启用</label></span>
+        <span><label class="chk"><input type="checkbox" id="fFallback"> 兜底模板</label></span>
+      </div>
+      <div class="form-row"><label>匹配关键词（逗号分隔，OCR 文本命中任一即选用）</label><input id="fKeywords" placeholder="送货单,发货单,供应商"></div>
+      <div class="form-row"><label>限定扩展名（逗号分隔，留空不限）</label><input id="fExts" placeholder=".jpg,.pdf"></div>
+      <div class="form-row">
+        <label>抽取字段</label>
+        <table class="field-table"><thead><tr><th>字段名(key)</th><th>中文标签</th><th>类型</th><th>说明</th><th></th></tr></thead>
+        <tbody id="fFields"></tbody></table>
+        <button class="btn btn-sm" id="fAddField">+ 添加字段</button>
+      </div>
+      <div class="form-row"><label>补充提示词（可选）</label><textarea id="fPrompt" rows="2"></textarea></div>
+      <div class="form-row">
+        <label>在线调试：粘贴一段文本试抽</label>
+        <textarea id="fTestText" rows="3" placeholder="贴一段 OCR 文本，点「试抽」看效果"></textarea>
+        <div class="row-btns"><button class="btn btn-sm" id="fTryRun">试抽</button></div>
+        <pre id="fTestResult" class="code small"></pre>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="modalCancel">取消</button>
+      <button class="btn btn-primary" id="modalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 风险规则编辑弹窗 -->
+<div class="modal-mask" id="riskModalMask">
+  <div class="modal">
+    <div class="modal-head"><h3 id="riskModalTitle">编辑规则</h3></div>
+    <div class="modal-body">
+      <div class="form-row"><label>规则名称</label><input id="rkName" placeholder="如：采购-回扣"></div>
+      <div class="form-row inline">
+        <span><label>风险分类</label>
+          <select id="rkCategory">
+            <option>价格异常</option><option>私下交易/飞单</option><option>回扣/利益输送</option>
+            <option>竞品撬单</option><option>客户投诉/舆情</option><option>信息泄露</option><option>合规风险</option>
+          </select></span>
+        <span><label>严重度</label>
+          <select id="rkSeverity">
+            <option value="low">低</option><option value="medium" selected>中</option>
+            <option value="high">高</option><option value="critical">严重</option>
+          </select></span>
+        <span><label class="chk"><input type="checkbox" id="rkEnabled" checked> 启用</label></span>
+      </div>
+      <div class="form-row">
+        <label>作用群（点击「选择群」弹出窗勾选，留空=全部群生效）</label>
+        <div id="rkScopeChips" style="display:flex;flex-wrap:wrap;margin:6px 0"></div>
+        <button type="button" class="btn btn-sm" id="rkScopePick">选择群…</button>
+      </div>
+      <div class="form-row"><label>关键词（正则，逗号分隔，命中任一即触发）</label><input id="rkKeywords" placeholder="回扣,返点,私下"></div>
+      <div class="form-row">
+        <label>通知管理层（点击「选择管理层」弹出窗勾选，留空=按严重度自动路由）</label>
+        <div id="rkLayersChips" style="display:flex;flex-wrap:wrap;margin:6px 0"></div>
+        <button type="button" class="btn btn-sm" id="rkLayersPick">选择管理层…</button>
+        <div style="margin-top:6px;font-size:12px;color:#6b7280">不选择则按规则严重度兜底推送（低→L1，中→L1/L2，高→L2/L3，严重→L1/L2/L3）</div>
+      </div>
+      <div class="form-row"><label>补充说明（可选，附加给大模型）</label><input id="rkLlm" placeholder="可选"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="riskModalCancel">取消</button>
+      <button class="btn btn-primary" id="riskModalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 通用选择弹窗（作用群 / 管理层 复用）：独立于规则 modal，避免群/层过多时挤在小框内 -->
+<div id="pickerMask" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:760px;max-width:92vw;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.25)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #eee">
+      <strong id="pickerTitle" style="font-size:15px">选择</strong>
+      <button type="button" id="pickerClose" style="border:none;background:none;font-size:22px;cursor:pointer;line-height:1;color:#9aa3af">×</button>
+    </div>
+    <div style="padding:12px 18px 0">
+      <input id="pickerSearch" placeholder="搜索名称 / ID…" style="width:100%;padding:8px 10px;border:1px solid #d9dee5;border-radius:8px;box-sizing:border-box;font-size:14px">
+    </div>
+    <div id="pickerList" style="padding:8px 18px;overflow:auto;flex:1;min-height:220px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-top:1px solid #eee;font-size:13px;color:#6b7280">
+      <span>已选 <b id="pickerCount" style="color:#111">0</b> / <span id="pickerTotal">0</span></span>
+      <span>
+        <button type="button" class="btn btn-sm" id="pickerAll">全选</button>
+        <button type="button" class="btn btn-sm" id="pickerClear">清空</button>
+      </span>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid #eee">
+      <button type="button" class="btn btn-sm" id="pickerCancel">取消</button>
+      <button type="button" class="btn btn-sm btn-primary" id="pickerOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 模型连接编辑弹窗 -->
+<div class="modal-mask" id="modelModalMask">
+  <div class="modal">
+    <div class="modal-head"><h3 id="modelModalTitle">新建模型连接</h3></div>
+    <div class="modal-body">
+      <div class="form-row"><label>连接名称</label><input id="mdName" placeholder="如：本地 Ollama / DeepSeek"></div>
+      <div class="form-row inline">
+        <span><label>提供方类型</label>
+          <select id="mdProvider">
+            <option value="ollama">本地 Ollama</option>
+            <option value="openai">外部 OpenAI 兼容</option>
+          </select></span>
+        <span><label class="chk"><input type="checkbox" id="mdEnabled" checked> 启用</label></span>
+        <span><label class="chk"><input type="checkbox" id="mdDefault"> 设为默认</label></span>
+      </div>
+      <div class="form-row"><label>Base URL</label><input id="mdBaseUrl" placeholder="填到接口前缀即可，如 https://api.siliconflow.cn/v1、https://open.bigmodel.cn/api/paas/v4"></div>
+      <div class="form-row"><label>API Key（本地 Ollama 可留空；留空=不修改）</label><input id="mdApiKey" type="password" placeholder="sk-..." autocomplete="off"></div>
+      <div class="form-row"><label>模型名</label>
+        <span class="inline-input">
+          <input id="mdModel" placeholder="如 qwen2.5:14b / deepseek-chat">
+          <button class="btn btn-sm" id="mdFetch" type="button">拉取模型列表</button>
+        </span>
+        <datalist id="mdModelList"></datalist>
+      </div>
+      <div class="form-row inline">
+        <span><label>温度</label><input id="mdTemp" type="number" step="0.1" value="0.1" style="width:90px"></span>
+        <span><label>超时(秒)</label><input id="mdTimeout" type="number" value="180" style="width:90px"></span>
+      </div>
+      <div class="form-row"><label>服务于哪些用途</label>
+        <div class="chk-group">
+          <label class="chk"><input type="checkbox" id="mdRoleExtract" value="extract"> 结构化抽取</label>
+          <label class="chk"><input type="checkbox" id="mdRoleRisk" value="risk"> 风险研判</label>
+        </div>
+      </div>
+      <div class="row-btns">
+        <button class="btn btn-sm" id="mdTest" type="button">测试连接</button>
+        <span id="mdTestResult" class="test-result"></span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="modelModalCancel">取消</button>
+      <button class="btn btn-primary" id="modelModalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="/static/app.js?v=16"></script>
+</body>
+</html>
