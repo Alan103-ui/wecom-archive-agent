@@ -76,6 +76,13 @@ def _migrate_sqlite() -> None:
         if "risk_scanned" not in cols:
             cur.execute("ALTER TABLE chat_message ADD COLUMN risk_scanned INTEGER NOT NULL DEFAULT 0")
             conn.commit()
+
+        # wecom_config 新增列（客户联系 secret）
+        cur.execute("PRAGMA table_info(wecom_config)")
+        wcols = {r[1] for r in cur.fetchall()}
+        if "customer_contact_secret" not in wcols:
+            cur.execute("ALTER TABLE wecom_config ADD COLUMN customer_contact_secret TEXT NOT NULL DEFAULT ''")
+            conn.commit()
     finally:
         conn.close()
 

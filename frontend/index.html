@@ -269,6 +269,10 @@
             <input id="wcSecret" type="password" autocomplete="off" placeholder="管理后台→会话内容存档→Secret">
           </div>
           <div class="form-row">
+            <label>客户联系 Secret（外部群信息用）</label>
+            <input id="wcCustomerSecret" type="password" autocomplete="off" placeholder="管理后台→客户联系→Secret（外部群 groupchat/get 需要）">
+          </div>
+          <div class="form-row">
             <label>SDK 动态库路径</label>
             <input id="wcSdkPath" placeholder="data/sdk/WeWorkFinanceSdk.dll">
           </div>
@@ -327,6 +331,22 @@
           <span class="hint" id="wcPermitMsg"></span>
         </div>
         <div class="tpl-list" id="wcPermitBox" style="margin-top:10px"></div>
+
+        <div class="panel-head" style="margin-top:18px">
+          <h3>外部群（客户群）信息</h3>
+        </div>
+        <div class="desc">外部群与内部群不同：群信息走 externalcontact/groupchat/get，token 必须用「客户联系 Secret」（区别于会话存档 Secret）。</div>
+        <div class="grid-2">
+          <div class="form-row" style="grid-column:1/-1">
+            <label>外部群 roomid（以 wr 开头）</label>
+            <input id="wcExternalRoomid" placeholder="wrOgQhDgAA...">
+          </div>
+        </div>
+        <div class="row-btns">
+          <button class="btn" id="wcExternalGroup">拉取外部群信息</button>
+          <span class="hint" id="wcExternalMsg"></span>
+        </div>
+        <div class="tpl-list" id="wcExternalBox" style="margin-top:10px"></div>
 
         <div class="panel-head" style="margin-top:18px">
           <h3>离职成员会话转接</h3>

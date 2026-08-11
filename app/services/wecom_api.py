@@ -178,3 +178,46 @@ def get_quit_list(
     d = _post("/cgi-bin/msgaudit/check_quit_list", {}, corpid, corpsecret, base_url)
     ids = d.get("ids") or []
     return {"ids": ids, "count": len(ids)}
+
+
+def get_external_group(
+    roomid: str,
+    customer_contact_secret: str | None = None,
+    corpid: str | None = None,
+    base_url: str | None = None,
+) -> dict:
+    """获取外部群（客户群）信息（官方 externalcontact/groupchat/get，doc 93417）。
+
+    ⚠️ 与内部群（msgaudit/groupchat/get）不同，外部群必须用「客户联系 secret」
+    换取 access_token，而不是「会话内容存档 secret」。
+
+    官方返回 {"group_chat": {"roomid","name","owner","member_list":[{userid,type,join_time}],
+    "admin_list":[userid...]}}，其中 member_list.type：1=企业成员 2=外部联系人。
+    返回 {"roomid","name","owner","member_count","members":[{userid,type,join_time}],"admins":[...]}
+    """
+    secret = (customer_contact_secret or settings.WECOM_CUSTOMER_CONTACT_SECRET or "").strip()
+    if not secret:
+        raise WeComAPIError(
+            -3, "未配置客户联系 secret：在「企业微信配置」填入后，方可拉取外部群信息"
+        )
+    d = _post("/cgi-bin/externalcontact/groupchat/get", {"roomid": roomid},
+              corpid, secret, base_url)
+    grp = d.get("group_chat") or {}
+    members = []
+    for m in (grp.get("member_list") or []):
+        if isinstance(m, dict) and m.get("userid"):
+            members.append({
+                "userid": m.get("userid"),
+                "type": m.get("type"),      # 1=企业成员 2=外部联系人
+                "join_time": m.get("join_time"),
+            })
+    admins = grp.get("admin_list") or []
+    return {
+        "roomid": grp.get("roomid", roomid),
+        "name": grp.get("name"),
+        "owner": grp.get("owner"),
+        "member_count": len(members),
+        "members": members,
+        "admins": admins,
+        "is_external": True,
+    }

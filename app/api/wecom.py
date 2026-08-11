@@ -87,3 +87,47 @@ def quit_list():
     except wecom_api.WeComAPIError as e:
         raise HTTPException(400, f"errcode={e.errcode} {e.errmsg}")
     return {"ok": True, "count": d["count"], "ids": d["ids"]}
+
+
+@router.get("/external-groupchat/{room_id}", summary="拉取外部群(客户群)信息并写回群档案")
+def external_groupchat(room_id: str, db: Session = Depends(get_db),
+                       customer_contact_secret: str = ""):
+    """外部群（客户群）与内部群不同：群信息走 externalcontact/groupchat/get，
+    且 token 必须用「客户联系 secret」换取。结果写回 ChatRoom 供前端展示。"""
+    try:
+        info = wecom_api.get_external_group(room_id, customer_contact_secret or None)
+    except wecom_api.WeComAPIError as e:
+        raise HTTPException(400, f"errcode={e.errcode} {e.errmsg}")
+
+    room = db.get(ChatRoom, room_id)
+    if room is None:
+        room = ChatRoom(
+            room_id=room_id,
+            name=info.get("name") or None,
+            owner=info.get("owner"),
+            member_count=info.get("member_count", 0),
+        )
+        db.add(room)
+    else:
+        if info.get("name"):
+            room.name = info.get("name")
+        if info.get("owner"):
+            room.owner = info.get("owner")
+        room.member_count = info.get("member_count", 0)
+    # members 仅存企业成员（type=1），外部联系人单独在返回里呈现
+    biz_members = [m["userid"] for m in (info.get("members") or [])
+                   if m.get("userid") and m.get("type") == 1]
+    room.members = ",".join(biz_members)
+    db.commit()
+    db.refresh(room)
+
+    return {
+        "ok": True,
+        "is_external": True,
+        "room_id": room_id,
+        "name": room.name,
+        "owner": room.owner,
+        "member_count": room.member_count,
+        "members": info.get("members") or [],
+        "admins": info.get("admins") or [],
+    }

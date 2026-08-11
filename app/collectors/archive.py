@@ -59,10 +59,13 @@ def _rich_summary(msg_type: str, plain: dict[str, Any]) -> str:
         return f"[填表] {t.get('title', '')}".strip()
     if msg_type == "redpacket":
         t = plain.get("redpacket", {}) or {}
-        return f"[红包] {t.get('title', '')}".strip()
+        rtype = t.get("type")
+        type_txt = "拼手气" if rtype == 2 else ("普通" if rtype == 1 else "")
+        return f"[红包] {t.get('wish', '')} {type_txt}".strip()
     if msg_type == "meeting":
         t = plain.get("meeting", {}) or {}
-        return f"[会议] {t.get('title', '')}".strip()
+        loc = t.get("location", "")
+        return f"[会议] {t.get('title', '')} {('@' + loc) if loc else ''}".strip()
     if msg_type == "doc":
         t = plain.get("doc", {}) or {}
         return f"[文档] {t.get('title', '')} {t.get('link_url', '')}".strip()
@@ -74,7 +77,8 @@ def _rich_summary(msg_type: str, plain: dict[str, Any]) -> str:
         return f"[图文] {t.get('title', '')} {t.get('description', '')}".strip()
     if msg_type == "calendar":
         t = plain.get("calendar", {}) or {}
-        return f"[日程] {t.get('title', '')}".strip()
+        st = t.get("start_time")
+        return f"[日程] {t.get('title', '')} {('开始:' + str(st)) if st else ''}".strip()
     if msg_type == "channel":
         t = plain.get("channel", {}) or {}
         return f"[视频号] {t.get('title', '')}".strip()
@@ -246,12 +250,18 @@ class ArchiveCollector(BaseCollector):
         elif msg_type == "agree":
             ag = plain.get("agree", {}) or {}
             msg.content_text = f"[同意存档] {ag.get('userid', '')}".strip()
+        elif msg_type == "disagree":
+            dg = plain.get("disagree", {}) or {}
+            msg.content_text = f"[不同意存档] {dg.get('userid', '')} {dg.get('reason', '')}".strip()
         elif msg_type == "card":
             cd = plain.get("card", {}) or {}
             msg.content_text = f"[名片] {cd.get('name', '')} {cd.get('corpname', '')}".strip()
         elif msg_type == "location":
             loc = plain.get("location", {}) or {}
-            msg.content_text = f"[位置] {loc.get('title', '')} {loc.get('address', '')}".strip()
+            lat = loc.get("latitude")
+            lng = loc.get("longitude")
+            coord = f"({lat},{lng})" if lat is not None and lng is not None else ""
+            msg.content_text = f"[位置] {loc.get('title', '')} {loc.get('address', '')} {coord}".strip()
         elif msg_type == "weapp":
             wa = plain.get("weapp", {}) or {}
             msg.content_text = f"[小程序] {wa.get('displayname', '')}".strip()
@@ -264,18 +274,20 @@ class ArchiveCollector(BaseCollector):
                     continue
                 t = it.get("msgtype")
                 sub = it.get(t, {}) if t and isinstance(it.get(t), dict) else {}
+                sender = str(it.get("from") or sub.get("from") or "")
+                prefix = (sender + "：") if sender else ""
                 if t == "text":
-                    snippets.append(str(sub.get("content", "")))
+                    snippets.append(prefix + str(sub.get("content", "")))
                 elif t in ("image", "file", "video", "voice", "emotion"):
-                    snippets.append(f"[{t}]")
+                    snippets.append(f"{prefix}[{t}]")
                 elif t == "revoke":
-                    snippets.append("[撤回]")
+                    snippets.append(f"{prefix}[撤回]")
                 elif t == "link":
-                    snippets.append(f"[链接] {sub.get('title', '')}")
+                    snippets.append(f"{prefix}[链接] {sub.get('title', '')}")
                 elif t == "location":
-                    snippets.append(f"[位置] {sub.get('title', '')}")
+                    snippets.append(f"{prefix}[位置] {sub.get('title', '')}")
                 elif t == "weapp":
-                    snippets.append(f"[小程序] {sub.get('displayname', '')}")
+                    snippets.append(f"{prefix}[小程序] {sub.get('displayname', '')}")
             msg.content_text = f"[会话记录] {cr.get('title', '')}".strip()
             if snippets:
                 msg.content_text += "：" + "；".join(s for s in snippets if s)

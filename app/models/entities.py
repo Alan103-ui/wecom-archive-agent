@@ -319,6 +319,8 @@ class WeComConfig(Base):
     mode: Mapped[str] = mapped_column(String(16), default="mock")
     corp_id: Mapped[str] = mapped_column(String(128), default="")
     archive_secret: Mapped[str] = mapped_column(String(256), default="")
+    # 客户联系 secret（外部群信息 externalcontact/groupchat/get 用，区别于存档 secret）
+    customer_contact_secret: Mapped[str] = mapped_column(String(256), default="")
     # SDK 动态库路径（Windows .dll / Linux .so）
     sdk_path: Mapped[str] = mapped_column(String(512), default="")
     # RSA 私钥 PEM 内容（同时落盘到 private_key_path 供 SDK 解密读取）

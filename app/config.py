@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     WECOM_CORP_ID: str = ""
     # 管理后台 → 安全与管理 → 管理工具 → 会话内容存档 → Secret
     WECOM_ARCHIVE_SECRET: str = ""
+    # 客户联系 secret（外部群信息 externalcontact/groupchat/get 需要，区别于存档 secret）
+    WECOM_CUSTOMER_CONTACT_SECRET: str = ""
     # SDK 动态库路径。Windows: WeWorkFinanceSdk.dll ；Linux: libWeWorkFinanceSdk_C.so
     WECOM_SDK_PATH: str = str(BASE_DIR / "data" / "sdk" / "WeWorkFinanceSdk.dll")
     # 企业自持 RSA 私钥（PKCS#1 / PKCS#8 PEM 文件），用于解密 encrypt_random_key

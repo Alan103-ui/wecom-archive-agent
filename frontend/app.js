@@ -751,6 +751,7 @@ async function loadWeComConfig() {
     $('#wcFetchLimit').value = c.fetch_limit ?? 500;
     $('#wcCorpId').value = c.corp_id || '';
     $('#wcSecret').value = c.archive_secret || '';
+    $('#wcCustomerSecret').value = c.customer_contact_secret || '';
     $('#wcSdkPath').value = c.sdk_path || '';
     $('#wcTimeout').value = c.sdk_timeout ?? 30;
     $('#wcKey').value = c.private_key_content || '';
@@ -772,6 +773,7 @@ $('#wcSave').onclick = async () => {
     mode: $('#wcMode').value,
     corp_id: $('#wcCorpId').value.trim(),
     archive_secret: $('#wcSecret').value,
+    customer_contact_secret: $('#wcCustomerSecret').value,
     sdk_path: $('#wcSdkPath').value.trim(),
     private_key_content: $('#wcKey').value,
     private_key_path: '',
@@ -797,9 +799,10 @@ $('#wcSave').onclick = async () => {
 $('#wcVerify').onclick = async () => {
   const corpId = $('#wcCorpId').value.trim();
   const secret = $('#wcAgentSecret').value;
+  const customerSecret = $('#wcCustomerSecret').value;
   const base = $('#wcApiBase').value.trim();
-  if (!corpId || !secret) {
-    $('#wcVerifyMsg').textContent = '请先填写 Corp ID 与企微应用 Secret';
+  if (!corpId || (!secret && !customerSecret)) {
+    $('#wcVerifyMsg').textContent = '请先填写 Corp ID 与（应用/客户联系）Secret';
     $('#wcVerifyMsg').style.color = '#dc2626';
     return;
   }
@@ -809,15 +812,25 @@ $('#wcVerify').onclick = async () => {
   try {
     const r = await req('/wecom-config/verify', {
       method: 'POST',
-      body: JSON.stringify({ corp_id: corpId, archive_secret: $('#wcSecret').value, agent_secret: secret, api_base_url: base }),
+      body: JSON.stringify({ corp_id: corpId, archive_secret: $('#wcSecret').value, agent_secret: secret, customer_contact_secret: customerSecret, api_base_url: base }),
     });
-    if (r.ok) {
-      $('#wcVerifyMsg').textContent = `✓ 凭证有效（token ${r.token_masked}，有效期 ${r.expires_in}s）`;
-      $('#wcVerifyMsg').style.color = '#16a34a';
-    } else {
-      $('#wcVerifyMsg').textContent = `✗ 失败 errcode=${r.errcode}：${r.errmsg}`;
-      $('#wcVerifyMsg').style.color = '#dc2626';
+    const parts = [];
+    if (r.archive) {
+      parts.push(r.archive.ok
+        ? `✓ 存档/应用凭证有效（token ${r.archive.token_masked}，有效期 ${r.archive.expires_in}s）`
+        : `✗ 存档/应用凭证失败 errcode=${r.archive.errcode}：${r.archive.errmsg}`);
     }
+    if (r.customer_contact) {
+      parts.push(r.customer_contact.ok
+        ? `✓ 客户联系凭证有效（token ${r.customer_contact.token_masked}，有效期 ${r.customer_contact.expires_in}s）`
+        : `✗ 客户联系凭证失败 errcode=${r.customer_contact.errcode}：${r.customer_contact.errmsg}`);
+    }
+    if (!r.archive && !r.customer_contact) {
+      if (r.ok) parts.push(`✓ 凭证有效（token ${r.token_masked}，有效期 ${r.expires_in}s）`);
+      else parts.push(`✗ 失败 errcode=${r.errcode}：${r.errmsg}`);
+    }
+    $('#wcVerifyMsg').textContent = parts.join('　|　');
+    $('#wcVerifyMsg').style.color = parts.every((p) => p.startsWith('✓')) ? '#16a34a' : '#dc2626';
   } catch (e) {
     $('#wcVerifyMsg').textContent = '验证请求异常：' + e.message;
     $('#wcVerifyMsg').style.color = '#dc2626';
@@ -867,6 +880,31 @@ $('#wcQuitList').onclick = async () => {
     box.innerHTML = '';
   }
   finally { $('#wcQuitList').disabled = false; }
+};
+
+$('#wcExternalGroup').onclick = async () => {
+  const roomid = $('#wcExternalRoomid').value.trim();
+  const box = $('#wcExternalBox');
+  const msg = $('#wcExternalMsg');
+  if (!roomid) { msg.textContent = '请填写外部群 roomid'; msg.style.color = '#dc2626'; return; }
+  $('#wcExternalGroup').disabled = true;
+  msg.textContent = '拉取中…';
+  msg.style.color = '#94a3b8';
+  try {
+    const r = await req('/wecom/external-groupchat/' + encodeURIComponent(roomid) + '?customer_contact_secret=' + encodeURIComponent($('#wcCustomerSecret').value));
+    msg.textContent = `✓ 已拉取外部群「${r.name || r.room_id}」(${r.member_count} 人)`;
+    msg.style.color = '#16a34a';
+    const members = (r.members || []).map((m) =>
+      `<div class="dist-item"><span>${esc(m.userid || '-')}</span><span class="muted">${esc(m.type == 2 ? '外部联系人' : '企业成员')}</span></div>`
+    ).join('') || '<div class="dist-item"><span>无成员</span></div>';
+    const admins = (r.admins || []).length ? `<div class="dist-item"><span class="muted">群管理员：${esc(r.admins.join(', '))}</span></div>` : '';
+    box.innerHTML = `<div class="dist-item"><span>群主：${esc(r.owner || '-')}</span></div>` + members + admins;
+  } catch (e) {
+    msg.textContent = '拉取失败：' + e.message;
+    msg.style.color = '#dc2626';
+    box.innerHTML = '';
+  }
+  finally { $('#wcExternalGroup').disabled = false; }
 };
 
 $('#wcSingleAgree').onclick = async () => {

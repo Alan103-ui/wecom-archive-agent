@@ -43,6 +43,7 @@ class WeComConfigIn(BaseModel):
     fetch_limit: int = 500
     agent_id: str = ""
     agent_secret: str = ""
+    customer_contact_secret: str = ""
     only_group_chat: bool = True
     filter_room_ids: str = ""
     api_base_url: str = ""
@@ -53,6 +54,7 @@ class WeComVerifyIn(BaseModel):
     agent_id: str = ""  # 占位，取 token 仅需 corpid + secret
     agent_secret: str = ""        # 应用消息推送 secret（告警通道用）
     archive_secret: str = ""      # 会话内容存档 secret（archive 模式真正依赖）
+    customer_contact_secret: str = ""  # 客户联系 secret（外部群信息接口用）
     api_base_url: str = ""
 
 
@@ -83,6 +85,7 @@ def get_wecom_config(db: Session = Depends(get_db)):
             "fetch_limit": settings.WECOM_FETCH_LIMIT,
             "agent_id": settings.WECOM_AGENT_ID,
             "agent_secret": settings.WECOM_AGENT_SECRET,
+            "customer_contact_secret": settings.WECOM_CUSTOMER_CONTACT_SECRET,
             "only_group_chat": settings.ONLY_GROUP_CHAT,
             "filter_room_ids": settings.FILTER_ROOM_IDS,
             "api_base_url": settings.WECOM_API_BASE_URL,
@@ -104,6 +107,7 @@ def get_wecom_config(db: Session = Depends(get_db)):
         "fetch_limit": row.fetch_limit,
         "agent_id": row.agent_id,
         "agent_secret": row.agent_secret,
+        "customer_contact_secret": row.customer_contact_secret,
         "only_group_chat": row.only_group_chat,
         "filter_room_ids": row.filter_room_ids,
         "api_base_url": row.api_base_url or settings.WECOM_API_BASE_URL,
@@ -122,9 +126,19 @@ def post_verify_wecom(payload: WeComVerifyIn):
     因此优先验证它；未填写时 fallback 到应用 secret(agent_secret) 以兼容简化部署。
     """
     base = payload.api_base_url.strip() or settings.WECOM_API_BASE_URL
-    secret = (payload.archive_secret or payload.agent_secret).strip()
-    result = verify_token(payload.corp_id.strip(), secret, base)
-    return result
+    corpid = payload.corp_id.strip()
+    results: dict = {}
+    if payload.archive_secret or payload.agent_secret:
+        secret = (payload.archive_secret or payload.agent_secret).strip()
+        results["archive"] = verify_token(corpid, secret, base)
+    if payload.customer_contact_secret:
+        results["customer_contact"] = verify_token(
+            corpid, payload.customer_contact_secret.strip(), base
+        )
+    # 向后兼容：若只验了存档类，直接返回该结果对象
+    if not payload.customer_contact_secret and "archive" in results:
+        return results["archive"]
+    return results
 
 
 # ---------------------------------------------------------------- 保存
@@ -169,6 +183,7 @@ def put_wecom_config(payload: WeComConfigIn, db: Session = Depends(get_db)):
     row.fetch_limit = payload.fetch_limit
     row.agent_id = payload.agent_id.strip()
     row.agent_secret = payload.agent_secret.strip()
+    row.customer_contact_secret = payload.customer_contact_secret.strip()
     row.only_group_chat = payload.only_group_chat
     row.filter_room_ids = payload.filter_room_ids.strip()
     row.api_base_url = payload.api_base_url.strip() or settings.WECOM_API_BASE_URL
@@ -188,6 +203,7 @@ def put_wecom_config(payload: WeComConfigIn, db: Session = Depends(get_db)):
     settings.WECOM_FETCH_LIMIT = row.fetch_limit
     settings.WECOM_AGENT_ID = row.agent_id
     settings.WECOM_AGENT_SECRET = row.agent_secret
+    settings.WECOM_CUSTOMER_CONTACT_SECRET = row.customer_contact_secret
     settings.ONLY_GROUP_CHAT = row.only_group_chat
     settings.FILTER_ROOM_IDS = row.filter_room_ids
     settings.WECOM_API_BASE_URL = row.api_base_url
