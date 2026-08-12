@@ -28,7 +28,22 @@ from app.services.settings_store import (
 
 router = APIRouter()
 
+# 支持：纯邮箱 或 "显示名 <邮箱>"（显示名可为中文）
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+_EMAIL_WITH_NAME_RE = re.compile(
+    r"^(.+?)\s*<([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)>\s*$"
+)
+
+
+def _is_valid_from_addr(value: str) -> bool:
+    value = value.strip()
+    if not value:
+        return True
+    if _EMAIL_RE.match(value):
+        return True
+    if _EMAIL_WITH_NAME_RE.match(value):
+        return True
+    return False
 
 
 # ---------------------------------------------------------------- SMTP
@@ -56,14 +71,17 @@ def get_smtp():
 
 @router.put("/smtp-config", summary="保存邮件(SMTP)配置")
 def put_smtp(payload: SmtpIn):
-    if payload.from_addr and not _EMAIL_RE.match(payload.from_addr):
-        raise HTTPException(status_code=400, detail="发件人邮箱地址格式不正确")
+    if not _is_valid_from_addr(payload.from_addr):
+        raise HTTPException(
+            status_code=400,
+            detail="发件人格式不正确，请填写邮箱地址或“显示名 <邮箱地址>”",
+        )
     set_smtp_config({
         "host": payload.host,
         "port": payload.port,
         "user": payload.user,
         "pass": payload.pass_field,  # 留空=保留原值
-        "from": payload.from_addr,
+        "from": payload.from_addr.strip(),
         "tls": payload.tls,
     })
     return {"ok": True, "message": "SMTP 配置已保存"}

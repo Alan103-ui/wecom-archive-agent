@@ -895,10 +895,15 @@ function _smtpBody() {
 }
 function _validateSmtp(body, forTest) {
   const EMAIL_RE = /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/;
+  const EMAIL_WITH_NAME_RE = /^(.+?)\s*<([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)>\s*$/;
+  function isFromOk(v) {
+    if (!v) return true;
+    return EMAIL_RE.test(v) || EMAIL_WITH_NAME_RE.test(v);
+  }
   if (!body.host) return '请填写 SMTP 主机';
   if (!body.user) return '请填写发件账号';
   if (forTest && !$('#smtpTestTo').value.trim()) return '请先填写测试收件人';
-  if (body.from_addr && !EMAIL_RE.test(body.from_addr)) return '发件人邮箱地址格式不正确';
+  if (body.from_addr && !isFromOk(body.from_addr)) return '发件人格式不正确，请填写邮箱或“显示名 <邮箱>”';
   return '';
 }
 function _appBody() {

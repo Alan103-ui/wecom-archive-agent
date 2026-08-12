@@ -14,8 +14,10 @@ from __future__ import annotations
 import logging
 import smtplib
 import ssl
+from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr, parseaddr
 
 import httpx
 from sqlalchemy import select
@@ -39,6 +41,27 @@ _SEV_LABEL = {
 
 def _sev_label(sev: str) -> str:
     return _SEV_LABEL.get(sev, sev)
+
+
+def _format_from_addr(from_addr: str, fallback: str) -> str:
+    """把发件人配置格式化成 RFC 5322 地址。
+
+    支持两种写法：
+      - 纯邮箱：gkserver@greatchem.com.cn
+      - 显示名 + 邮箱：AI数据助手 <gkserver@greatchem.com.cn>
+    中文显示名会用 MIME Base64 编码，避免触发 SMTPUTF8（腾讯企业邮不支持）。
+    """
+    raw = (from_addr or fallback or "").strip()
+    if not raw:
+        return ""
+    # 没有尖括号，直接当纯邮箱用
+    if "<" not in raw or ">" not in raw:
+        return raw
+    name, addr = parseaddr(raw)
+    if not addr:
+        return raw
+    encoded_name = Header(name, "utf-8").encode() if name else ""
+    return formataddr((encoded_name, addr))
 
 
 def _room_name(room_id: str | None) -> str:
@@ -122,7 +145,7 @@ def _send_email(target: str, event: RiskEvent) -> tuple[bool, str]:
         return False, "收件人邮箱未配置"
     try:
         msg = MIMEMultipart()
-        msg["From"] = cfg["from"] or cfg["user"]
+        msg["From"] = _format_from_addr(cfg.get("from"), cfg["user"])
         msg["To"] = target
         msg["Subject"] = f"[风险预警] {event.category}（{_sev_label(event.severity)}）"
         biz = event.biz_time.strftime("%Y-%m-%d %H:%M") if event.biz_time else "-"
