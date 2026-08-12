@@ -20,6 +20,7 @@ from app.models.entities import (
     SyncCursor,
 )
 from app.models.risk import AlertLayer, RiskEvent, RiskRule
+from app.models.model_config import ModelConfig
 from app.services import pipeline
 from app.services.extract import llm
 from app.services.ocr import engine as ocr_engine
@@ -68,6 +69,28 @@ def health(db: Session = Depends(get_db)):
         }
     else:
         llm_info = {"ok": False, "available": False, "detail": "结构化抽取已关闭"}
+
+    # 列出所有模型连接（配置健康，不实时探活 —— 避免 /health 变慢、消耗 API 额度）。
+    # 实时连通性验证走前端「测试所有连接」按钮（复用 /models/{id}/test）。
+    try:
+        conns = db.query(ModelConfig).order_by(ModelConfig.created_at).all()
+        connections = [
+            {
+                "id": c.id,
+                "name": c.name,
+                "provider": c.provider,
+                "model": c.model,
+                "roles": list(c.roles or []),
+                "enabled": bool(c.enabled),
+                "has_key": bool(c.api_key) or c.provider == "ollama",
+                "has_model": bool(c.model),
+                "ok": bool(c.enabled and c.model and (c.api_key or c.provider == "ollama")),
+            }
+            for c in conns
+        ]
+    except Exception:  # noqa: BLE001
+        connections = []
+    llm_info["connections"] = connections
 
     overall = "ok" if db_info.get("ok") else "degraded"
     return HealthOut(

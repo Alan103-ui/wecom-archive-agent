@@ -725,12 +725,22 @@ async function loadSystem() {
   try {
     const h = await req('/system/health');
     const dot = (ok) => `<span class="tag tag-${ok ? 'done' : 'failed'}">${ok ? '正常' : '异常'}</span>`;
+    const conns = (h.llm && h.llm.connections) || [];
+    const connHtml = conns.length ? conns.map((c) => {
+      const roleTag = (c.roles || []).map((r) => ROLE_LABEL[r] || r).join('、') || '（无）';
+      const flags = [c.enabled ? '' : '已停用', c.has_model ? '' : '缺模型', c.has_key ? '' : '缺密钥'].filter(Boolean).join(' · ');
+      return `<div class="kv-row" style="padding:3px 0">
+        <span class="kv-k">${dot(c.ok)} ${esc(c.name)}</span>
+        <span class="kv-v">${esc(c.provider)} · <b>${esc(c.model || '-')}</b>　角色：${esc(roleTag)}${flags ? '　<span class="muted">' + esc(flags) + '</span>' : ''}</span>
+      </div>`;
+    }).join('') : '<div class="empty">无模型连接</div>';
     $('#healthBox').innerHTML = `<div class="kv">
       <span class="k">数据库</span><span class="v">${dot(h.database.ok)} ${esc(h.database.dialect || h.database.error || '')}</span>
       <span class="k">采集器</span><span class="v">${dot(h.collector.ok)} ${esc(h.collector.mode)} — ${esc(h.collector.detail || '')}</span>
       <span class="k">OCR 引擎</span><span class="v">${dot(h.ocr.ok)} ${esc(h.ocr.detail || h.ocr.engine || '')}</span>
-      <span class="k">模型连接</span><span class="v">${dot(h.llm.ok)} ${esc(h.llm.detail || '')}</span>
-    </div>`;
+      <span class="k">模型连接</span><span class="v">${dot(h.llm.ok)} 共 ${conns.length} 条（已启用 ${conns.filter((c) => c.enabled).length}）</span>
+    </div>
+    <div style="margin-top:8px"><b>模型连接明细</b><div id="connList" style="margin-top:4px">${connHtml}</div></div>`;
 
     const s = h.scheduler;
     const lr = s.last_run || {};
@@ -960,6 +970,28 @@ $('#wcSingleAgree').onclick = async () => {
 $('#btnPause').onclick = async () => { try { toast((await req('/system/scheduler/pause', { method: 'POST' })).message, 'ok'); loadSystem(); } catch (e) { toast(e.message, 'err'); } };
 $('#btnResume').onclick = async () => { try { toast((await req('/system/scheduler/resume', { method: 'POST' })).message, 'ok'); loadSystem(); } catch (e) { toast(e.message, 'err'); } };
 $('#btnReloadCollector').onclick = async () => { try { toast((await req('/system/collector/reload', { method: 'POST' })).message, 'ok'); loadSystem(); } catch (e) { toast(e.message, 'err'); } };
+
+$('#btnTestModels').onclick = async function () {
+  this.disabled = true; this.textContent = '测试中…';
+  const box = document.getElementById('connList');
+  try {
+    const cfg = await req('/system/config');
+    const conns = (cfg.models || []).filter((m) => m.enabled);
+    if (!conns.length) { toast('没有已启用的连接', 'err'); return; }
+    for (const m of conns) {
+      try {
+        const t = await req('/models/' + encodeURIComponent(m.id) + '/test', { method: 'POST' });
+        const d = (t && t.data) || {};
+        const ok = d.reachable && d.sample_ok;
+        if (box) box.insertAdjacentHTML('beforeend', `<div class="kv-row" style="padding:2px 0"><span class="kv-k">${ok ? '✅' : '❌'} ${esc(m.name)}</span><span class="kv-v">${esc((d.reachable ? '连通 ' + (d.latency_ms ?? '?') + 'ms' : '不可达'))}${d.sample_ok ? ' · 样例正常' : (d.model ? ' · 样例失败' : '')}${d.error ? ' · ' + esc(d.error) : ''}</span></div>`);
+      } catch (e) {
+        if (box) box.insertAdjacentHTML('beforeend', `<div class="kv-row" style="padding:2px 0"><span class="kv-k">❌ ${esc(m.name)}</span><span class="kv-v">测试异常：${esc(e.message)}</span></div>`);
+      }
+    }
+    toast('已测试 ' + conns.length + ' 条已启用连接', 'ok');
+  } catch (e) { toast('测试失败：' + e.message, 'err'); }
+  finally { this.disabled = false; this.textContent = '测试所有连接'; }
+};
 
 /* ================ 顶栏动作 ================ */
 $('#btnSync').onclick = async function () {
