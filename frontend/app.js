@@ -1067,6 +1067,7 @@ async function loadRisks(page = 1) {
   const wrap = $('#riskTable').querySelector('tbody');
   wrap.innerHTML = '<tr><td colspan="10" class="empty">加载中…</td></tr>';
   try {
+    await getRoomNameMap();
     const d = await req('/risks/events?' + qs({
       page, page_size: 20, severity: $('#riskSev').value,
       status: $('#riskStatus').value, keyword: $('#riskKeyword').value,
@@ -1079,7 +1080,7 @@ async function loadRisks(page = 1) {
         <td>${fmtTime(r.created_at)}</td>
         <td>${esc(r.category)}</td>
         <td>${sevTag(r.severity)}</td>
-        <td>${esc(r.room_id)}</td>
+        <td>${esc(roomName(r.room_id))}</td>
         <td>${esc(r.from_id || '-')}</td>
         <td class="wrap">${esc((r.snippet || '').slice(0, 80))}</td>
         <td>${r.detection_method === 'llm' ? '<span class="tag tag-processing">模型研判</span>' : '<span class="tag tag-done">关键词</span>'}</td>
@@ -1115,7 +1116,7 @@ window.showRisk = async function (id) {
     <div class="kv">
       <span class="k">分类</span><span class="v">${esc(r.category)}</span>
       <span class="k">严重度</span><span class="v">${sevTag(r.severity)}</span>
-      <span class="k">群</span><span class="v">${esc(r.room_id || '-')}</span>
+      <span class="k">群</span><span class="v">${esc(roomName(r.room_id))}</span>
       <span class="k">发送人</span><span class="v">${esc(r.from_id || '-')}</span>
       <span class="k">引擎</span><span class="v">${r.detection_method === 'llm' ? '模型研判' : '关键词'}${r.matched_keyword ? '（' + esc(r.matched_keyword) + '）' : ''}</span>
       <span class="k">预警状态</span><span class="v">${alertTag(r.alert_status)}</span>
