@@ -225,6 +225,12 @@ td.wrap{white-space:normal;max-width:420px;word-break:break-all}
 .target-row .ch{font-weight:600;width:64px}
 .target-row .tg{flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .target-row .act{display:flex;gap:6px;align-items:center}
+.target-row .ch{width:72px}
+.target-row .ch-webhook{color:#07c160}
+.target-row .ch-app{color:#2f88ff}
+.target-row .ch-email{color:#f0883e}
+.target-row .ch-system{color:#9ca3af}
+.form-hint{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}
 
 a{color:#60a5fa}
 

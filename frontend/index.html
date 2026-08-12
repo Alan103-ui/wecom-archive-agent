@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>企业微信会话存档</title>
-<link rel="stylesheet" href="/static/style.css?v=31">
+<link rel="stylesheet" href="/static/style.css?v=32">
 </head>
 <body>
 
@@ -634,6 +634,35 @@
   </div>
 </div>
 
+<!-- 投递目标编辑弹窗 -->
+<div class="modal-mask" id="targetModalMask">
+  <div class="modal">
+    <div class="modal-head"><h3 id="targetModalTitle">添加投递目标</h3></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label>通道类型</label>
+        <select id="tgChannel">
+          <option value="webhook">企微群机器人（Webhook）</option>
+          <option value="app">企微应用消息（推给人 / 部门）</option>
+          <option value="email">邮件</option>
+          <option value="system">系统内通知（风险页红点，无需配置）</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label id="tgTargetLabel">目标（Webhook 地址）</label>
+        <input id="tgTarget" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
+        <div id="tgHint" class="form-hint">群机器人 Webhook 须以 https:// 开头，可在企微群「群机器人」设置里获取。</div>
+      </div>
+      <div class="form-row"><label>备注名（便于识别，可选）</label><input id="tgLabel" placeholder="如：L3 总经理群"></div>
+      <div class="form-row"><label class="chk"><input type="checkbox" id="tgEnabled" checked> 启用该投递目标</label></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="targetModalCancel">取消</button>
+      <button class="btn btn-primary" id="targetModalSave">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- 模型连接编辑弹窗 -->
 <div class="modal-mask" id="modelModalMask">
   <div class="modal">
@@ -683,6 +712,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=31"></script>
+<script src="/static/app.js?v=32"></script>
 </body>
 </html>

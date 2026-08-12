@@ -1146,9 +1146,18 @@ $('#riskRescan').onclick = async () => {
 
 /* ================ 风控配置 ================ */
 let editingRuleId = null;
+let _layersCache = [];
+const CH_LABEL = { webhook: '群机器人', app: '应用消息', email: '邮件', system: '系统内' };
+const TARGET_CHANNELS = {
+  webhook: { targetLabel: '目标（Webhook 地址）', placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...', hint: '群机器人 Webhook 须以 https:// 开头，可在企微群「群机器人」设置里获取。' },
+  app: { targetLabel: '目标（userid 或 party:部门ID）', placeholder: 'zhangsan 或 party:2', hint: '填 userid（推给个人）或 party:部门ID（推给部门），多个用逗号分隔。' },
+  email: { targetLabel: '目标（邮箱地址）', placeholder: 'risk@example.com', hint: '接收邮箱地址，多个用逗号分隔。' },
+  system: { targetLabel: '目标（无需填写）', placeholder: '无需填写', hint: '系统内通知自动送达风险事件页（红点），无需填写目标。' },
+};
 async function loadRiskConfig() {
   try {
     const [rules, layers] = await Promise.all([req('/risks/rules'), req('/risks/layers')]);
+    _layersCache = layers;
     $('#ruleList').innerHTML = rules.length ? rules.map((t) => `
       <div class="tpl-card ${t.enabled ? '' : 'disabled'}">
         <h4>${esc(t.name)} <span class="tag tag-${t.severity === 'critical' ? 'failed' : t.severity === 'high' ? 'warn' : 'processing'}">${SEV_LABEL[t.severity] || t.severity}</span> <span class="tag tag-skipped">${esc(t.category)}</span></h4>
@@ -1167,12 +1176,13 @@ async function loadRiskConfig() {
         <h4>${esc(l.name)} <span class="lvl">Lv ${l.level}</span> <span class="tag tag-skipped">${esc(l.id)}</span></h4>
         <div class="desc">${esc(l.description || '')}</div>
         ${(l.targets || []).map((t) => `<div class="target-row">
-            <span class="ch">${esc(t.channel)}</span>
-            <span class="tg">${esc(t.label || t.target || '')}</span>
+            <span class="ch ch-${esc(t.channel)}">${esc(CH_LABEL[t.channel] || t.channel)}</span>
+            <span class="tg" title="${esc(t.target || '')}">${esc(t.label || t.target || (t.channel === 'system' ? '自动送达' : '(无目标)'))}</span>
             <span class="act">
               <label class="chk"><input type="checkbox" data-tid="${t.id}" ${t.enabled ? 'checked' : ''} onchange="toggleTarget('${t.id}',this.checked)"> 启用</label>
-              <button class="btn btn-sm" onclick="testLayer('${l.id}')">测试</button>
-              <button class="btn btn-sm btn-warn" onclick="delTarget('${t.id}')">删除</button>
+              <button class="btn btn-sm" onclick="editTarget('${esc(l.id)}','${esc(t.id)}')">编辑</button>
+              <button class="btn btn-sm" onclick="testLayer('${esc(l.id)}')">测试</button>
+              <button class="btn btn-sm btn-warn" onclick="delTarget('${esc(t.id)}')">删除</button>
             </span>
           </div>`).join('') || '<div class="desc">该层暂无投递目标</div>'}
         <div class="row-btns"><button class="btn btn-sm" onclick="addTarget('${l.id}')">+ 添加投递目标</button>
@@ -1417,22 +1427,73 @@ window.toggleTarget = async (id, enabled) => {
   catch (e) { toast(e.message, 'err'); }
 };
 window.testLayer = async (id) => {
-  try { const r = await req('/risks/layers/' + id + '/test', { method: 'POST' });
-    const lines = (r.data.results || []).map((x) => `${x.channel}: ${x.ok ? '✓' : '✗'} ${x.detail}`).join('\n');
-    toast('测试结果：\n' + lines, r.ok ? 'ok' : 'err');
-  } catch (e) { toast(e.message, 'err'); }
-};
-window.addTarget = async function (layerId) {
-  const channel = prompt('通道（webhook/app/email/system）：', 'webhook');
-  if (!channel) return;
-  const target = prompt('目标（Webhook URL / userid 或 party:xxx / 邮箱）：', '');
-  if (target === null) return;
-  const label = prompt('备注名（可选）：', '');
   try {
-    await req('/risks/targets', { method: 'POST', body: JSON.stringify({ layer_id: layerId, channel, target, label: label || null, enabled: true }) });
-    toast('已添加', 'ok'); loadRiskConfig();
+    const r = await req('/risks/layers/' + id + '/test', { method: 'POST' });
+    const results = (r.data && r.data.results) || [];
+    openDrawer('投递测试 · 层 ' + id, `
+      <div class="kv">
+        <span class="k">总体结果</span><span class="v">${r.ok ? '<span class="tag tag-done">全部可达</span>' : '<span class="tag tag-failed">存在失败通道</span>'}</span>
+      </div>
+      <h4>各通道明细</h4>
+      ${results.length ? results.map((x) => `<div class="dist-item">
+          <span>${esc(CH_LABEL[x.channel] || x.channel)} · ${x.ok ? '✅ 成功' : '❌ 失败'}</span>
+          <span class="muted">${esc(x.detail || '')}</span>
+        </div>`).join('') : '<div class="dist-item"><span>该层暂无投递目标</span></div>'}
+    `);
   } catch (e) { toast(e.message, 'err'); }
 };
+
+let _targetLayerId = null;
+let _targetEditId = null;
+function openTargetModal(layerId, target) {
+  _targetLayerId = layerId;
+  _targetEditId = target ? target.id : null;
+  $('#targetModalTitle').textContent = target ? '编辑投递目标' : '添加投递目标';
+  const ch = target ? target.channel : 'webhook';
+  $('#tgChannel').value = ch;
+  $('#tgTarget').value = target ? (target.target || '') : '';
+  $('#tgLabel').value = target ? (target.label || '') : '';
+  $('#tgEnabled').checked = target ? target.enabled !== false : true;
+  applyChannelHint(ch);
+  $('#targetModalMask').classList.add('show');
+}
+function applyChannelHint(ch) {
+  const c = TARGET_CHANNELS[ch] || TARGET_CHANNELS.webhook;
+  $('#tgTargetLabel').textContent = c.targetLabel;
+  $('#tgTarget').placeholder = c.placeholder;
+  $('#tgHint').textContent = c.hint;
+  $('#tgTarget').disabled = (ch === 'system');
+  if (ch === 'system') $('#tgTarget').value = '';
+}
+async function saveTargetModal() {
+  const channel = $('#tgChannel').value;
+  const target = channel === 'system' ? '' : $('#tgTarget').value.trim();
+  const label = $('#tgLabel').value.trim() || null;
+  const enabled = $('#tgEnabled').checked;
+  if (channel !== 'system' && !target) return toast('请填写目标', 'err');
+  try {
+    if (_targetEditId) {
+      await req('/risks/targets/' + _targetEditId, { method: 'PATCH', body: JSON.stringify({ target, label, enabled }) });
+    } else {
+      await req('/risks/targets', { method: 'POST', body: JSON.stringify({ layer_id: _targetLayerId, channel, target, label, enabled }) });
+    }
+    toast('已保存', 'ok');
+    $('#targetModalMask').classList.remove('show');
+    loadRiskConfig();
+  } catch (e) { toast(e.message, 'err'); }
+}
+window.addTarget = function (layerId) { openTargetModal(layerId, null); };
+window.editTarget = function (layerId, tid) {
+  const layer = _layersCache.find((l) => l.id === layerId);
+  const t = layer && (layer.targets || []).find((x) => x.id === tid);
+  if (!t) return toast('未找到该投递目标', 'err');
+  openTargetModal(layerId, t);
+};
+// 投递目标弹窗事件绑定
+$('#tgChannel').onchange = (e) => applyChannelHint(e.target.value);
+$('#targetModalCancel').onclick = () => $('#targetModalMask').classList.remove('show');
+$('#targetModalMask').onclick = (e) => { if (e.target === $('#targetModalMask')) $('#targetModalMask').classList.remove('show'); };
+$('#targetModalSave').onclick = saveTargetModal;
 $('#layerNew').onclick = async () => {
   const id = prompt('管理层 ID（如 L4）：', 'L4'); if (!id) return;
   const name = prompt('名称：', '新管理层'); if (!name) return;
