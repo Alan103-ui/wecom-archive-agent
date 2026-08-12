@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-10-8';
+const APP_JS_VERSION = '2026-08-12-1';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -392,11 +392,11 @@ async function loadRouting() {
     const failed = (logs.by_status && logs.by_status.failed) || 0;
     const targetCnt = layers.reduce((n, l) => n + (l.targets || []).length, 0);
     const summary = `<div class="chain-summary">
-        <div class="cs-item"><span class="cs-num">${logs.total || 0}</span><span class="cs-lbl">累计投递</span></div>
-        <div class="cs-item ok"><span class="cs-num">${sent}</span><span class="cs-lbl">送达</span></div>
-        <div class="cs-item bad"><span class="cs-num">${failed}</span><span class="cs-lbl">失败</span></div>
-        <div class="cs-item"><span class="cs-num">${layers.length}</span><span class="cs-lbl">管理层</span></div>
-        <div class="cs-item"><span class="cs-num">${targetCnt}</span><span class="cs-lbl">投递目标</span></div>
+        <div class="cs-item clickable" data-route="delivery" data-dl-status="" title="点击查看全部投递回执"><span class="cs-num">${logs.total || 0}</span><span class="cs-lbl">累计投递</span></div>
+        <div class="cs-item clickable ok" data-route="delivery" data-dl-status="sent" title="点击查看送达回执"><span class="cs-num">${sent}</span><span class="cs-lbl">送达</span></div>
+        <div class="cs-item clickable bad" data-route="delivery" data-dl-status="failed" title="点击查看失败回执"><span class="cs-num">${failed}</span><span class="cs-lbl">失败</span></div>
+        <div class="cs-item clickable" data-route="layers" title="点击查看管理层与投递目标"><span class="cs-num">${layers.length}</span><span class="cs-lbl">管理层</span></div>
+        <div class="cs-item clickable" data-route="targets" title="点击查看投递目标"><span class="cs-num">${targetCnt}</span><span class="cs-lbl">投递目标</span></div>
       </div>`;
 
     const layerCards = layers.length ? layers.map((l) => {
@@ -427,6 +427,18 @@ async function loadRouting() {
         <div class="layer-list">${layerCards}</div>
       </div>
     </div>`;
+    const summaryEl = box.querySelector('.chain-summary');
+    if (summaryEl) {
+      summaryEl.querySelectorAll('[data-route]').forEach((el) => {
+        el.onclick = () => {
+          if (el.dataset.route === 'delivery') {
+            applyDeliveryFilter({ status: el.dataset.dlStatus });
+          } else {
+            goView('risks', 'risk-config');
+          }
+        };
+      });
+    }
   } catch (e) { box.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
 }
 
@@ -446,9 +458,17 @@ async function loadDeliveryLogs(page) {
     if (sumBox) {
       const sent = (d.by_status && d.by_status.sent) || 0;
       const failed = (d.by_status && d.by_status.failed) || 0;
-      sumBox.innerHTML = `<span class="cs-item"><b>${d.total || 0}</b> 条回执</span>`
-        + `<span class="cs-item ok"><b>${sent}</b> 送达</span>`
-        + `<span class="cs-item bad"><b>${failed}</b> 失败</span>`;
+      const total = d.total || 0;
+      sumBox.innerHTML = [
+        { status: '', cls: '', num: total, lbl: '条回执' },
+        { status: 'sent', cls: 'ok', num: sent, lbl: '送达' },
+        { status: 'failed', cls: 'bad', num: failed, lbl: '失败' },
+      ].map(({ status, cls, num, lbl }) =>
+        `<span class="cs-item clickable ${cls}" data-dl-status="${status}" title="点击查看${status === 'sent' ? '送达' : status === 'failed' ? '失败' : '全部'}回执"><b>${num}</b> ${lbl}</span>`
+      ).join('');
+      sumBox.querySelectorAll('[data-dl-status]').forEach((el) => {
+        el.onclick = () => applyDeliveryFilter({ status: el.dataset.dlStatus });
+      });
     }
     $('#dlTotal').textContent = '共 ' + (d.total || 0) + ' 条';
     if (!d.items.length) { wrap.innerHTML = '<tr><td colspan="7" class="empty">暂无投递回执</td></tr>'; $('#deliveryPager').innerHTML = ''; return; }
@@ -1299,6 +1319,12 @@ function applyRiskFilter(opts) {
   $('#riskAlertStatus').value = opts.alert_status || '';
   $('#riskKeyword').value = opts.keyword || '';
   loadRisks(1);
+}
+
+function applyDeliveryFilter(opts) {
+  $('#dlStatus').value = opts.status || '';
+  $('#dlChannel').value = opts.channel || '';
+  goView('risks', 'risk-delivery');
 }
 
 /* 切换到指定主视图（及子标签），并触发对应加载器 */
