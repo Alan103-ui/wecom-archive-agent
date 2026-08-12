@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>企业微信会话存档</title>
-<link rel="stylesheet" href="/static/style.css?v=32">
+<link rel="stylesheet" href="/static/style.css?v=33">
 </head>
 <body>
 
@@ -92,6 +92,7 @@
       <button class="subtab active" data-sub="risk-events">风险事件</button>
       <button class="subtab" data-sub="risk-routing">路由全景</button>
       <button class="subtab" data-sub="risk-config">规则与层</button>
+      <button class="subtab" data-sub="risk-delivery">送达回执</button>
       <button class="subtab" data-sub="risk-ocr-vision">🖼️ OCR 视觉升级</button>
     </div>
 
@@ -176,6 +177,37 @@
         </div>
       </div>
 
+    </div>
+
+    <div class="subview" id="sub-risk-delivery">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>送达回执（全链条最后一环）</h3>
+          <span class="hint">每一次真实投递/失败都在此留存回执，可据此核验告警是否真的到达对应通道</span>
+        </div>
+        <div class="delivery-summary" id="deliverySummary"></div>
+        <div class="toolbar">
+          <select id="dlStatus">
+            <option value="">全部状态</option>
+            <option value="sent">送达</option>
+            <option value="failed">失败</option>
+          </select>
+          <select id="dlChannel">
+            <option value="">全部通道</option>
+            <option value="webhook">群机器人</option>
+            <option value="app">应用消息</option>
+            <option value="email">邮件</option>
+            <option value="system">系统内</option>
+          </select>
+          <button class="btn btn-primary" id="dlSearch">查询</button>
+          <span class="hint" id="dlTotal"></span>
+        </div>
+        <div class="table-wrap"><table id="deliveryTable">
+          <thead><tr><th>时间</th><th>事件（分类·严重度·群）</th><th>层</th><th>通道</th><th>目标</th><th>状态</th><th>明细</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <div class="pager" id="deliveryPager"></div>
+      </div>
     </div>
 
     <div class="subview" id="sub-risk-ocr-vision">
@@ -712,6 +744,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=32"></script>
+<script src="/static/app.js?v=33"></script>
 </body>
 </html>

@@ -185,6 +185,78 @@ def event_logs(event_id: str, db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/logs", summary="全局投递回执（全链条送达结果）")
+def list_logs(
+    db: Session = Depends(get_db),
+    status: str | None = Query(None, description="sent/failed"),
+    channel: str | None = None,
+    layer_id: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(30, ge=1, le=100),
+):
+    """投递回执总览：按状态/通道/层过滤，关联事件取分类/严重度/群。
+
+    这是「规则 → 管理层 → 投递目标 → 实际送达」链条的最后一环可视化入口：
+    每一行是一次真实投递（或失败）的回执，可据此核验告警是否真的到达。
+    """
+    from sqlalchemy import and_ as _and
+
+    conds = []
+    if status:
+        conds.append(AlertLog.status == status)
+    if channel:
+        conds.append(AlertLog.channel == channel)
+    if layer_id:
+        conds.append(AlertLog.layer_id == layer_id)
+    w = _and(*conds) if conds else True
+
+    total = db.execute(select(func.count()).select_from(AlertLog).where(w)).scalar_one()
+    by_status = {
+        k: v for k, v in db.execute(
+            select(AlertLog.status, func.count()).select_from(AlertLog).where(w).group_by(AlertLog.status)
+        ).all()
+    }
+    by_channel = {
+        k: v for k, v in db.execute(
+            select(AlertLog.channel, func.count()).select_from(AlertLog).where(w).group_by(AlertLog.channel)
+        ).all()
+    }
+    rows = (
+        db.execute(
+            select(AlertLog, RiskEvent)
+            .join(RiskEvent, AlertLog.event_id == RiskEvent.id, isouter=True)
+            .where(w)
+            .order_by(AlertLog.sent_at.desc())
+            .limit(page_size).offset((page - 1) * page_size)
+        )
+        .all()
+    )
+    items = []
+    for l, ev in rows:
+        items.append({
+            "id": l.id,
+            "event_id": l.event_id,
+            "layer_id": l.layer_id,
+            "channel": l.channel,
+            "target": l.target,
+            "status": l.status,
+            "detail": l.detail,
+            "sent_at": l.sent_at.isoformat() if l.sent_at else None,
+            "category": ev.category if ev else None,
+            "severity": ev.severity if ev else None,
+            "room_id": ev.room_id if ev else None,
+            "snippet": (ev.snippet or "")[:60] if ev else None,
+        })
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "by_status": by_status,
+        "by_channel": by_channel,
+        "items": items,
+    }
+
+
 @router.post("/events/{event_id}/acknowledge", response_model=ActionResult, summary="确认/处置事件")
 def acknowledge(event_id: str, reviewer: str = Body("system", embed=True),
                 note: str | None = Body(None, embed=True)):

@@ -154,6 +154,7 @@ const SUB_LOADERS = {
   'risk-events': () => loadRisks(1),
   'risk-routing': loadRouting,
   'risk-config': loadRiskConfig,
+  'risk-delivery': loadDeliveryLogs,
   'risk-ocr-vision': loadOcrVisionConfig,
   'data-records': () => initRecords(),
   'data-attachments': () => loadAttachments(1),
@@ -344,7 +345,10 @@ async function loadRouting() {
   if (!box) return;
   box.innerHTML = '<div class="empty">加载中…</div>';
   try {
-    const [rules, layers] = await Promise.all([req('/risks/rules'), req('/risks/layers')]);
+    const [rules, layers, logs] = await Promise.all([
+      req('/risks/rules'), req('/risks/layers'),
+      req('/risks/logs?page_size=1').catch(() => ({ total: 0, by_status: {}, by_channel: {} })),
+    ]);
     const ruleRows = rules.length ? rules.map((rl) => `<tr>
         <td>${esc(rl.name)}</td>
         <td><span class="tag tag-skipped">${esc(rl.category)}</span></td>
@@ -353,31 +357,94 @@ async function loadRouting() {
         <td>${layerTags(layersOf(rl))}</td>
       </tr>`).join('') : '<tr><td colspan="5" class="empty">暂无规则</td></tr>';
 
+    // 全链条最后一环：投递可达性概览
+    const sent = (logs.by_status && logs.by_status.sent) || 0;
+    const failed = (logs.by_status && logs.by_status.failed) || 0;
+    const targetCnt = layers.reduce((n, l) => n + (l.targets || []).length, 0);
+    const summary = `<div class="chain-summary">
+        <div class="cs-item"><span class="cs-num">${logs.total || 0}</span><span class="cs-lbl">累计投递</span></div>
+        <div class="cs-item ok"><span class="cs-num">${sent}</span><span class="cs-lbl">送达</span></div>
+        <div class="cs-item bad"><span class="cs-num">${failed}</span><span class="cs-lbl">失败</span></div>
+        <div class="cs-item"><span class="cs-num">${layers.length}</span><span class="cs-lbl">管理层</span></div>
+        <div class="cs-item"><span class="cs-num">${targetCnt}</span><span class="cs-lbl">投递目标</span></div>
+      </div>`;
+
     const layerCards = layers.length ? layers.map((l) => {
       const coverRules = rules.filter((rl) => layersOf(rl).includes(l.id));
       const roomSet = new Set(); let allGroups = false;
       coverRules.forEach((rl) => { const s = rl.scope_rooms || []; if (s.length === 0) allGroups = true; s.forEach((x) => roomSet.add(x)); });
       const coverTxt = allGroups ? '<span class="tag tag-done">全部群</span>'
         : (roomSet.size ? [...roomSet].map((x) => `<span class="tag tag-skipped">${esc(x)}</span>`).join(' ') : '<span class="muted">无（仅严重度兜底可能覆盖）</span>');
-      const chans = [...new Set((l.targets || []).filter((t) => t.enabled).map((t) => t.channel))];
+      const targets = (l.targets || []).map((t) => `<div class="target-row mini">
+          <span class="ch ch-${esc(t.channel)}">${esc(CH_LABEL[t.channel] || t.channel)}</span>
+          <span class="tg" title="${esc(t.target || '')}">${esc(t.label || t.target || (t.channel === 'system' ? '自动送达' : '(无目标)'))}</span>
+          ${targetBadge(t)}
+        </div>`).join('') || '<div class="desc">该层暂无投递目标</div>';
       return `<div class="layer-card">
         <h4>${esc(l.name)} <span class="lvl">${esc(l.id)}</span></h4>
-        <div class="desc">接收方式：${chans.map((c) => `<span class="tag tag-processing">${esc(c)}</span>`).join(' ') || '未配置'}</div>
         <div class="desc">会收到来自：${coverTxt}</div>
         <div class="desc">覆盖规则 ${coverRules.length} 条</div>
+        <div class="targets-block">${targets}</div>
       </div>`;
     }).join('') : '<div class="empty">暂无管理层</div>';
 
-    box.innerHTML = `<div class="grid-2">
+    box.innerHTML = summary + `<div class="grid-2">
       <div><h4>规则 → 通知管理层</h4>
         <div class="table-wrap"><table><thead><tr><th>规则</th><th>分类</th><th>严重度</th><th>作用群</th><th>通知层</th></tr></thead>
         <tbody>${ruleRows}</tbody></table></div>
       </div>
-      <div><h4>管理层 → 会从哪些群收到预警</h4>
+      <div><h4>管理层 → 投递目标（通道与状态）</h4>
         <div class="layer-list">${layerCards}</div>
       </div>
     </div>`;
   } catch (e) { box.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
+}
+
+/* ================ 送达回执（全链条最后一环） ================ */
+let dlPage = 1;
+async function loadDeliveryLogs(page) {
+  dlPage = page || 1;
+  const wrap = $('#deliveryTable tbody');
+  const sumBox = $('#deliverySummary');
+  if (!wrap) return;
+  wrap.innerHTML = '<tr><td colspan="7" class="empty">加载中…</td></tr>';
+  try {
+    await getRoomNameMap();
+    const status = $('#dlStatus').value;
+    const channel = $('#dlChannel').value;
+    const d = await req('/risks/logs?' + qs({ page: dlPage, page_size: 30, status, channel }));
+    if (sumBox) {
+      const sent = (d.by_status && d.by_status.sent) || 0;
+      const failed = (d.by_status && d.by_status.failed) || 0;
+      sumBox.innerHTML = `<span class="cs-item"><b>${d.total || 0}</b> 条回执</span>`
+        + `<span class="cs-item ok"><b>${sent}</b> 送达</span>`
+        + `<span class="cs-item bad"><b>${failed}</b> 失败</span>`;
+    }
+    $('#dlTotal').textContent = '共 ' + (d.total || 0) + ' 条';
+    if (!d.items.length) { wrap.innerHTML = '<tr><td colspan="7" class="empty">暂无投递回执</td></tr>'; $('#deliveryPager').innerHTML = ''; return; }
+    wrap.innerHTML = d.items.map((x) => {
+      const tgt = x.target || (x.channel === 'system' ? '自动送达' : '-');
+      const tgtShort = tgt.length > 30 ? tgt.slice(0, 30) + '…' : tgt;
+      return `<tr>
+        <td>${fmtTime(x.sent_at)}</td>
+        <td>${sevTag(x.severity)} ${esc(x.category || '-')}<br><span class="muted">${esc(roomName(x.room_id))}${x.snippet ? ' · ' + esc(x.snippet) : ''}</span></td>
+        <td>${esc(x.layer_id || '系统内')}</td>
+        <td><span class="ch ch-${esc(x.channel)}">${esc(CH_LABEL[x.channel] || x.channel)}</span></td>
+        <td title="${esc(tgt)}">${esc(tgtShort)}</td>
+        <td>${x.status === 'sent' ? '<span class="badge badge-on">✅ 送达</span>' : '<span class="badge badge-warn">❌ 失败</span>'}</td>
+        <td class="muted" title="${esc(x.detail || '')}">${esc((x.detail || '').slice(0, 40))}</td>
+      </tr>`;
+    }).join('');
+    const total = d.total || 0, ps = d.page_size || 30, cur = d.page || 1;
+    const pages = Math.max(1, Math.ceil(total / ps));
+    let p = '';
+    if (cur > 1) p += `<button class="btn btn-sm" onclick="loadDeliveryLogs(${cur - 1})">上一页</button>`;
+    p += `<span class="muted">第 ${cur}/${pages} 页</span>`;
+    if (cur < pages) p += `<button class="btn btn-sm" onclick="loadDeliveryLogs(${cur + 1})">下一页</button>`;
+    $('#deliveryPager').innerHTML = p;
+  } catch (e) {
+    wrap.innerHTML = `<tr><td colspan="7" class="empty">加载失败：${esc(e.message)}</td></tr>`;
+  }
 }
 
 /* ================ 结构化数据 ================ */
@@ -1130,7 +1197,7 @@ window.showRisk = async function (id) {
     </div>
     <h4>投递回执</h4>
     <div class="table-wrap"><table><thead><tr><th>通道</th><th>目标</th><th>状态</th><th>详情</th></tr></thead><tbody>${
-      (logs && logs.length) ? logs.map((l) => `<tr><td>${esc(l.channel)}</td><td class="wrap">${esc(l.target)}</td><td>${tag(l.status)}</td><td class="wrap">${esc(l.detail || '')}</td></tr>`).join('') : '<tr><td colspan="4" class="empty">无</td></tr>'
+      (logs && logs.length) ? logs.map((l) => `<tr><td><span class="ch ch-${esc(l.channel)}">${esc(CH_LABEL[l.channel] || l.channel)}</span></td><td class="wrap">${esc(l.target)}</td><td>${l.status === 'sent' ? '<span class="badge badge-on">✅ 送达</span>' : '<span class="badge badge-warn">❌ 失败</span>'}</td><td class="wrap">${esc(l.detail || '')}</td></tr>`).join('') : '<tr><td colspan="4" class="empty">无</td></tr>'
     }</tbody></table></div>`);
   $('#rkAck').onclick = async () => { try { await req('/risks/events/' + id + '/acknowledge', { method: 'POST', body: JSON.stringify({ reviewer: 'web' }) }); toast('已确认', 'ok'); closeDrawer(); loadRisks(riskPage); } catch (e) { toast(e.message, 'err'); } };
   $('#rkResend').onclick = async () => { try { const rr = await req('/risks/events/' + id + '/resend', { method: 'POST' }); toast(rr.message, 'ok'); closeDrawer(); loadRisks(riskPage); } catch (e) { toast(e.message, 'err'); } };
@@ -1138,6 +1205,9 @@ window.showRisk = async function (id) {
 
 $('#riskSearch').onclick = () => loadRisks(1);
 $('#riskKeyword').onkeydown = (e) => { if (e.key === 'Enter') loadRisks(1); };
+$('#dlSearch').onclick = () => loadDeliveryLogs(1);
+$('#dlStatus').onchange = () => loadDeliveryLogs(1);
+$('#dlChannel').onchange = () => loadDeliveryLogs(1);
 $('#riskRescan').onclick = async () => {
   if (!confirm('把全部已扫消息重置为待扫描，下一轮风险作业将重扫（已发预警可能重复）？')) return;
   try { const r = await req('/risks/rescan', { method: 'POST', body: JSON.stringify({}) }); toast(r.message, 'ok'); loadRisks(1); }
@@ -1154,6 +1224,20 @@ const TARGET_CHANNELS = {
   email: { targetLabel: '目标（邮箱地址）', placeholder: 'risk@example.com', hint: '接收邮箱地址，多个用逗号分隔。' },
   system: { targetLabel: '目标（无需填写）', placeholder: '无需填写', hint: '系统内通知自动送达风险事件页（红点），无需填写目标。' },
 };
+// 投递目标状态徽标：已启用 / 已停用 / 未配置或占位
+function targetBadge(t) {
+  if (!t.enabled) return '<span class="badge badge-off">已停用</span>';
+  if (t.channel === 'system') return '<span class="badge badge-on">● 自动送达</span>';
+  const empty = !t.target || !t.target.trim()
+    || (t.channel === 'webhook' && !t.target.startsWith('http'))
+    || t.target.includes('REPLACE_WITH_REAL');
+  if (empty) return '<span class="badge badge-warn">⚠ 未配置/占位</span>';
+  return '<span class="badge badge-on">● 已启用</span>';
+}
+function layerName(layers, id) {
+  const l = layers.find((x) => x.id === id);
+  return l ? `${l.name}(${l.id})` : (id || '-');
+}
 async function loadRiskConfig() {
   try {
     const [rules, layers] = await Promise.all([req('/risks/rules'), req('/risks/layers')]);
@@ -1163,7 +1247,7 @@ async function loadRiskConfig() {
         <h4>${esc(t.name)} <span class="tag tag-${t.severity === 'critical' ? 'failed' : t.severity === 'high' ? 'warn' : 'processing'}">${SEV_LABEL[t.severity] || t.severity}</span> <span class="tag tag-skipped">${esc(t.category)}</span></h4>
         <div class="desc">${esc(t.description || '')}</div>
         <div class="kw">${(t.keywords || []).map((k) => `<span>${esc(k)}</span>`).join('') || '<span>无关键词</span>'}</div>
-        <div class="desc">路由层：${(t.alert_layers && t.alert_layers.length) ? t.alert_layers.join(',') : '按严重度兜底'} · 作用群：${t.scope_rooms && t.scope_rooms.length ? t.scope_rooms.length + ' 个' : '全群'}</div>
+        <div class="desc">路由层：${(t.alert_layers && t.alert_layers.length) ? t.alert_layers.map((x) => layerName(layers, x)).join('、') : '按严重度兜底'} · 作用群：${t.scope_rooms && t.scope_rooms.length ? t.scope_rooms.length + ' 个' : '全群'}</div>
         <div class="tpl-actions">
           <button class="btn btn-sm" onclick="editRule('${t.id}')">编辑</button>
           <button class="btn btn-sm" onclick="toggleRule('${t.id}',${!t.enabled})">${t.enabled ? '停用' : '启用'}</button>
@@ -1178,6 +1262,7 @@ async function loadRiskConfig() {
         ${(l.targets || []).map((t) => `<div class="target-row">
             <span class="ch ch-${esc(t.channel)}">${esc(CH_LABEL[t.channel] || t.channel)}</span>
             <span class="tg" title="${esc(t.target || '')}">${esc(t.label || t.target || (t.channel === 'system' ? '自动送达' : '(无目标)'))}</span>
+            ${targetBadge(t)}
             <span class="act">
               <label class="chk"><input type="checkbox" data-tid="${t.id}" ${t.enabled ? 'checked' : ''} onchange="toggleTarget('${t.id}',this.checked)"> 启用</label>
               <button class="btn btn-sm" onclick="editTarget('${esc(l.id)}','${esc(t.id)}')">编辑</button>
