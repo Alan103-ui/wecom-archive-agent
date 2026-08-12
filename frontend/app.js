@@ -982,6 +982,17 @@ $('#whTest').onclick = async () => {
   finally { $('#whTest').disabled = false; }
 };
 
+// 系统设置页密码/Secret 显示切换
+document.querySelectorAll('.toggle-eye').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const input = $('#' + btn.dataset.eyeFor);
+    if (!input) return;
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    btn.textContent = isHidden ? '🙈' : '👁';
+  });
+});
+
 $('#wcShowKey').onchange = (e) => { $('#wcKey').type = e.target.checked ? 'text' : 'password'; };
 $('#wcSave').onclick = async () => {
   const body = {

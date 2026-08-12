@@ -191,6 +191,10 @@ td.wrap{white-space:normal;max-width:420px;word-break:break-all}
 .form-row>label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
 .form-row input:not([type=checkbox]):not([type=radio]),.form-row textarea{width:100%}
 .form-row.inline{display:flex;gap:24px;align-items:flex-end}
+.password-wrap{position:relative;display:flex;align-items:center}
+.password-wrap input{width:100%;padding-right:34px}
+.toggle-eye{position:absolute;right:8px;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:4px}
+.toggle-eye:hover{color:var(--text)}
 .field-table{margin-bottom:8px}
 .field-table th{position:static;background:transparent;padding:4px 6px}
 .field-table td{padding:4px 6px;border-bottom:1px solid var(--line)}

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>企业微信会话存档</title>
-<link rel="stylesheet" href="/static/style.css?v=34">
+<link rel="stylesheet" href="/static/style.css?v=35">
 </head>
 <body>
 
@@ -568,7 +568,7 @@
           <div class="form-row"><label>SMTP 主机</label><input id="smtpHost" placeholder="如 smtp.exmail.qq.com"></div>
           <div class="form-row"><label>端口</label><input id="smtpPort" type="number" value="465"></div>
           <div class="form-row"><label>发件账号</label><input id="smtpUser" placeholder="如 risk@corp.com"></div>
-          <div class="form-row"><label>授权码/密码</label><input id="smtpPass" type="password" placeholder="留空=不修改"></div>
+          <div class="form-row"><label>授权码/密码</label><div class="password-wrap"><input id="smtpPass" type="password" placeholder="留空=不修改"><button type="button" class="toggle-eye" data-eye-for="smtpPass" title="显示/隐藏">👁</button></div></div>
           <div class="form-row"><label>发件人显示</label><input id="smtpFrom" placeholder="如 AI数据助手 &lt;gkserver@greatchem.com.cn&gt; 或仅邮箱"></div>
           <div class="form-row inline"><label class="chk"><input id="smtpTls" type="checkbox" checked> 使用 TLS/SSL 加密</label></div>
         </div>
@@ -587,7 +587,7 @@
         <div class="form-grid">
           <div class="form-row"><label>企业 ID (corp_id)</label><input id="appCorp" placeholder="企业微信后台「我的企业」处获取"></div>
           <div class="form-row"><label>应用 ID (agent_id)</label><input id="appAgent" placeholder="自建应用 AgentId"></div>
-          <div class="form-row"><label>应用 Secret</label><input id="appSecret" type="password" placeholder="留空=不修改"></div>
+          <div class="form-row"><label>应用 Secret</label><div class="password-wrap"><input id="appSecret" type="password" placeholder="留空=不修改"><button type="button" class="toggle-eye" data-eye-for="appSecret" title="显示/隐藏">👁</button></div></div>
         </div>
         <div class="form-row"><label>测试接收人</label><input id="appTestTo" placeholder="userid 或 party:部门ID，如 ZhangSan / party:2"></div>
         <div class="row-btns">
@@ -799,6 +799,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=34"></script>
+<script src="/static/app.js?v=35"></script>
 </body>
 </html>
