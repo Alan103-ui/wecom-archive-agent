@@ -202,12 +202,8 @@ function renderRoomCards(el, rooms, rules, byRoom) {
         </label>
       </div>
       <div class="room-id">${esc(r.room_id)}</div>
-      <div class="room-meta">消息 ${r.msg_count || 0} · 附件 ${r.attachment_count || 0} · 最近 ${fmtTime(r.last_msg_at)}</div>
       <div class="room-routing"><span class="rr-label">风险预警走向</span><div class="rr-layers">${layerTags([...lset])}</div></div>
       ${riskCnt ? `<div class="room-risk">⚠ 已触发 ${riskCnt} 条风险</div>` : ''}
-      <div class="room-actions" onclick="event.stopPropagation()">
-        <button class="btn btn-sm btn-warn" onclick="delRoom('${esc(r.room_id)}', false)">删除群及存档</button>
-      </div>
     </div>`;
   }).join('');
 }
