@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>企业微信会话存档</title>
-<link rel="stylesheet" href="/static/style.css?v=36">
+<link rel="stylesheet" href="/static/style.css?v=37">
 </head>
 <body>
 
@@ -112,6 +112,13 @@
           <option value="acknowledged">已确认</option>
           <option value="resolved">已解决</option>
           <option value="ignored">已忽略</option>
+        </select>
+        <select id="riskAlertStatus">
+          <option value="">全部预警状态</option>
+          <option value="ok">成功</option>
+          <option value="partial">部分送达</option>
+          <option value="failed">失败</option>
+          <option value="none">未发送</option>
         </select>
         <input id="riskKeyword" placeholder="群/发送人/命中内容…">
         <button class="btn btn-primary" id="riskSearch">查询</button>
@@ -799,6 +806,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=36"></script>
+<script src="/static/app.js?v=37"></script>
 </body>
 </html>

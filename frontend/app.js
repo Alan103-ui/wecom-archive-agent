@@ -1264,6 +1264,14 @@ function renderPager(sel, total, page, size, fn) {
 
 /* ================ 风险预警 ================ */
 let riskPage = 1;
+function applyRiskFilter(opts) {
+  $('#riskSev').value = opts.severity || '';
+  $('#riskStatus').value = opts.status || '';
+  $('#riskAlertStatus').value = opts.alert_status || '';
+  $('#riskKeyword').value = opts.keyword || '';
+  loadRisks(1);
+}
+
 async function loadRisks(page = 1) {
   riskPage = page;
   const wrap = $('#riskTable').querySelector('tbody');
@@ -1272,7 +1280,8 @@ async function loadRisks(page = 1) {
     await getRoomNameMap();
     const d = await req('/risks/events?' + qs({
       page, page_size: 20, severity: $('#riskSev').value,
-      status: $('#riskStatus').value, keyword: $('#riskKeyword').value,
+      status: $('#riskStatus').value, alert_status: $('#riskAlertStatus').value,
+      keyword: $('#riskKeyword').value,
     }));
     if (!d.items.length) {
       wrap.innerHTML = '<tr><td colspan="10" class="empty">暂无风险事件，下一轮扫描会自动研判新消息</td></tr>';
@@ -1295,11 +1304,25 @@ async function loadRisks(page = 1) {
       renderPager('#riskPager', d.total, page, 20, loadRisks);
     }
     const s = await req('/risks/stats');
-    $('#riskStatCards').innerHTML = [
-      ['风险事件', s.total], ['待处置', s.pending],
-      ['严重', s.by_severity.critical || 0], ['高', s.by_severity.high || 0],
-      ['中', s.by_severity.medium || 0], ['预警失败', s.by_alert_status.failed || s.by_alert_status.partial || 0],
-    ].map(([l, n]) => `<div class="card"><div class="num">${n}</div><div class="lbl">${l}</div></div>`).join('');
+    const cards = [
+      { l: '风险事件', n: s.total, f: {} },
+      { l: '待处置', n: s.pending, f: { status: 'pending' } },
+      { l: '严重', n: s.by_severity.critical || 0, f: { severity: 'critical' } },
+      { l: '高', n: s.by_severity.high || 0, f: { severity: 'high' } },
+      { l: '中', n: s.by_severity.medium || 0, f: { severity: 'medium' } },
+      { l: '预警失败', n: (s.by_alert_status.failed || 0) + (s.by_alert_status.partial || 0), f: { alert_status: 'failed,partial' } },
+    ];
+    $('#riskStatCards').innerHTML = cards.map(({ l, n, f }) => {
+      const attrs = Object.entries(f).map(([k, v]) => `data-${k}="${v}"`).join(' ');
+      return `<div class="card stat-card" ${attrs}><div class="num">${n}</div><div class="lbl">${l}</div></div>`;
+    }).join('');
+    $('#riskStatCards').querySelectorAll('.stat-card').forEach((c) => {
+      c.onclick = () => applyRiskFilter({
+        severity: c.dataset.severity || '',
+        status: c.dataset.status || '',
+        alert_status: c.dataset.alert_status || '',
+      });
+    });
   } catch (e) { wrap.innerHTML = `<tr><td colspan="10" class="empty">加载失败：${esc(e.message)}</td></tr>`; }
 }
 

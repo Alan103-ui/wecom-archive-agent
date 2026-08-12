@@ -111,6 +111,7 @@ def list_events(
     category: str | None = None,
     room_id: str | None = None,
     detection_method: str | None = None,
+    alert_status: str | None = Query(None, description="逗号分隔，如 failed,partial"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
@@ -125,6 +126,10 @@ def list_events(
         stmt = stmt.where(RiskEvent.room_id == room_id)
     if detection_method:
         stmt = stmt.where(RiskEvent.detection_method == detection_method)
+    if alert_status:
+        vals = [v.strip() for v in alert_status.split(",") if v.strip()]
+        if vals:
+            stmt = stmt.where(RiskEvent.alert_status.in_(vals))
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
     items = (
         db.execute(stmt.order_by(RiskEvent.created_at.desc())
