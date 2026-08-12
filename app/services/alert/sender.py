@@ -125,9 +125,11 @@ def _send_email(target: str, event: RiskEvent) -> tuple[bool, str]:
         msg["From"] = cfg["from"] or cfg["user"]
         msg["To"] = target
         msg["Subject"] = f"[风险预警] {event.category}（{_sev_label(event.severity)}）"
+        biz = event.biz_time.strftime("%Y-%m-%d %H:%M") if event.biz_time else "-"
         body = (
             f"风险分类：{event.category}\n严重度：{_sev_label(event.severity)}\n"
             f"群：{_room_name(event.room_id)}\n发送人：{event.from_id or '-'}\n"
+            f"时间：{biz}\n"
             f"命中内容：{event.snippet or '(LLM 语义命中)'}\n"
             f"研判：{event.detail or '-'}\n\n请在风控系统核查处置。"
         )
