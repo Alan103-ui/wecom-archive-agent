@@ -54,16 +54,63 @@ def _build_markdown(event: RiskEvent) -> str:
 
 
 # ---------------------------------------------------------------- 通道实现
+def _trim_bytes(s: str | None, max_bytes: int) -> str:
+    """按 UTF-8 字节截断，避免企微模板卡片字段超长。"""
+    if not s:
+        return ""
+    encoded = s.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return s
+    truncated = encoded[:max_bytes]
+    while truncated:
+        try:
+            return truncated.decode("utf-8")
+        except UnicodeDecodeError:
+            truncated = truncated[:-1]
+    return ""
+
+
+def _build_text_notice_card(event: RiskEvent) -> dict:
+    """构造企微群机器人 template_card（text_notice），比 markdown 更直观。"""
+    biz = event.biz_time.strftime("%H:%M") if event.biz_time else "-"
+    room = event.room_id or "单聊"
+    sender = event.from_id or "-"
+    cat = event.category or "风险事件"
+    sev = _sev_label(event.severity)
+    snippet = event.snippet or "(命中风险内容)"
+    return {
+        "card_type": "text_notice",
+        "source": {"desc": "企业微信会话存档", "desc_color": 0},
+        "main_title": {
+            "title": _trim_bytes(f"⚠️ 风险预警 · {cat}", 128),
+            "desc": _trim_bytes(f"严重度：{sev} ｜ {snippet}", 512),
+        },
+        "emphasis_content": {
+            "title": _trim_bytes(cat, 26),
+            "desc": _trim_bytes(sev, 27),
+        },
+        "sub_title_text": _trim_bytes(f"群 {room} · 发送人 {sender} · {biz}", 64),
+        "card_action": {"type": 1, "url": "http://127.0.0.1:8002"},
+    }
+
+
 def _send_webhook(target: str, event: RiskEvent) -> tuple[bool, str]:
     if not target or not target.startswith("http"):
         return False, "Webhook 地址未配置"
-    payload = {"msgtype": "markdown", "markdown": {"content": _build_markdown(event)}}
+    payload = {"msgtype": "template_card", "template_card": _build_text_notice_card(event)}
     try:
         with httpx.Client(timeout=10) as client:
             resp = client.post(target, json=payload)
             data = resp.json()
         if data.get("errcode") == 0:
-            return True, "已推送企微群机器人"
+            return True, "已推送企微群机器人（模板卡片）"
+        # 模板卡片字段超长或不支持时回退到 markdown
+        if data.get("errcode") in (40058, 40063, 40064, 40065, 40066):
+            payload = {"msgtype": "markdown", "markdown": {"content": _build_markdown(event)}}
+            resp = client.post(target, json=payload)
+            data = resp.json()
+            if data.get("errcode") == 0:
+                return True, "已推送企微群机器人（markdown 回退）"
         return False, f"企微返回 errcode={data.get('errcode')} {data.get('errmsg')}"
     except Exception as e:  # noqa: BLE001
         return False, f"Webhook 请求失败：{e}"
