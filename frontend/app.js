@@ -1146,8 +1146,25 @@ async function loadRiskConfig() {
           <button class="btn btn-sm btn-warn" onclick="delRule('${t.id}')">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">暂无规则</div>';
+
+    $('#layerList').innerHTML = layers.length ? layers.map((l) => `
+      <div class="layer-card">
+        <h4>${esc(l.name)} <span class="lvl">Lv ${l.level}</span> <span class="tag tag-skipped">${esc(l.id)}</span></h4>
+        <div class="desc">${esc(l.description || '')}</div>
+        ${(l.targets || []).map((t) => `<div class="target-row">
+            <span class="ch">${esc(t.channel)}</span>
+            <span class="tg">${esc(t.label || t.target || '')}</span>
+            <span class="act">
+              <label class="chk"><input type="checkbox" data-tid="${t.id}" ${t.enabled ? 'checked' : ''} onchange="toggleTarget('${t.id}',this.checked)"> 启用</label>
+              <button class="btn btn-sm" onclick="testLayer('${l.id}')">测试</button>
+              <button class="btn btn-sm btn-warn" onclick="delTarget('${t.id}')">删除</button>
+            </span>
+          </div>`).join('') || '<div class="desc">该层暂无投递目标</div>'}
+        <div class="row-btns"><button class="btn btn-sm" onclick="addTarget('${l.id}')">+ 添加投递目标</button>
+          <button class="btn btn-sm btn-warn" onclick="delLayer('${l.id}')">删除层</button></div>
+      </div>`).join('') : '<div class="empty">暂无管理层</div>';
+
     loadTimeoutConfig();
-    loadOcrVisionConfig();
   } catch (e) { toast('加载风控配置失败：' + e.message, 'err'); }
 }
 
