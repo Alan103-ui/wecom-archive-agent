@@ -1923,9 +1923,7 @@ bindSubtabs();
   try {
     const cfg = await req('/system/config');
     $('#modePill').textContent = '采集模式：' + (cfg.collector_mode === 'mock' ? 'mock（演示）' : 'archive（会话存档）');
-    const dm = (cfg.models || []).find((m) => m.is_default) || (cfg.models || [])[0];
-    $('#subTitle').textContent = dm ? `群聊 → OCR → ${dm.model} 结构化 → 业务基础数据`
-                                    : '群聊 → OCR → 信息抽取 → 业务基础数据';
+    // 顶栏副标题已隐藏，不再动态填充流程说明
   } catch (e) { /* 后端未就绪时不阻塞页面 */ }
   loadDashboard();
 })();
