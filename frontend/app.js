@@ -216,10 +216,25 @@ async function loadDashboard() {
   try { s = await req('/system/stats'); } catch (e) { return toast('加载统计失败：' + e.message, 'err'); }
 
   const T = s.totals;
-  $('#statCards').innerHTML = [
-    ['消息', T.messages], ['附件', T.attachments], ['OCR 结果', T.ocr_results],
-    ['结构化记录', T.records], ['风险事件', T.risk_events || 0], ['群数', T.rooms],
-  ].map(([lbl, num]) => `<div class="card"><div class="num">${num}</div><div class="lbl">${lbl}</div></div>`).join('');
+  const cards = [
+    { l: '消息', n: T.messages, nav: ['data', 'data-messages'] },
+    { l: '附件', n: T.attachments, nav: ['data', 'data-attachments'] },
+    { l: 'OCR 结果', n: T.ocr_results, nav: ['data', 'data-attachments'] },
+    { l: '结构化记录', n: T.records, nav: ['data', 'data-records'] },
+    { l: '风险事件', n: T.risk_events || 0, nav: ['risks', 'risk-events'], risk: {} },
+    { l: '群数', n: T.rooms, nav: ['rooms'] },
+  ];
+  $('#statCards').innerHTML = cards.map(({ l, n, nav, risk }) => {
+    const attr = `data-nav="${nav.join(',')}"` + (risk ? ` data-risk="${encodeURIComponent(JSON.stringify(risk))}"` : '');
+    return `<div class="card stat-card" ${attr}><div class="num">${n}</div><div class="lbl">${l}</div></div>`;
+  }).join('');
+  $('#statCards').querySelectorAll('.stat-card').forEach((c) => {
+    c.onclick = () => {
+      const [v, sub] = c.dataset.nav.split(',');
+      goView(v, sub);
+      if (c.dataset.risk) applyRiskFilter(JSON.parse(decodeURIComponent(c.dataset.risk)));
+    };
+  });
 
   const bar = (title, obj) => {
     const total = Object.values(obj).reduce((a, b) => a + b, 0) || 1;
@@ -253,19 +268,33 @@ async function loadDashboard() {
 }
 
 /* ================ 群与监控 ================ */
+let roomFilter = 'all';
 async function loadRooms() {
   const [rooms, rules, stats] = await Promise.all([
     req('/rooms').catch(() => []),
     req('/risks/rules').catch(() => []),
     req('/risks/stats').catch(() => ({ risk_events: 0, pending: 0, by_room: {} })),
   ]);
-  $('#roomStatCards').innerHTML = [
-    ['监控群数', rooms.length],
-    ['采集中', rooms.filter((r) => r.enabled).length],
-    ['风险事件', stats.risk_events || 0],
-    ['待处置', stats.pending || 0],
-  ].map(([l, n]) => `<div class="card"><div class="num">${n}</div><div class="lbl">${l}</div></div>`).join('');
-  renderRoomCards($('#roomList'), rooms, rules, stats.by_room || {});
+  const cards = [
+    { l: '监控群数', n: rooms.length, f: 'all' },
+    { l: '采集中', n: rooms.filter((r) => r.enabled).length, f: 'enabled' },
+    { l: '风险事件', n: stats.risk_events || 0, f: 'risk-all' },
+    { l: '待处置', n: stats.pending || 0, f: 'risk-pending' },
+  ];
+  $('#roomStatCards').innerHTML = cards.map(({ l, n, f }) =>
+    `<div class="card stat-card ${roomFilter === f ? 'active' : ''}" data-f="${f}"><div class="num">${n}</div><div class="lbl">${l}</div></div>`).join('');
+  $('#roomStatCards').querySelectorAll('.stat-card').forEach((c) => {
+    c.onclick = () => onRoomStatClick(c.dataset.f);
+  });
+  const filtered = roomFilter === 'enabled' ? rooms.filter((r) => r.enabled) : rooms;
+  renderRoomCards($('#roomList'), filtered, rules, stats.by_room || {});
+}
+
+function onRoomStatClick(f) {
+  if (f === 'risk-all') { goView('risks', 'risk-events'); applyRiskFilter({}); return; }
+  if (f === 'risk-pending') { goView('risks', 'risk-events'); applyRiskFilter({ status: 'pending' }); return; }
+  roomFilter = f;
+  loadRooms();
 }
 
 window.openRoom = async function (roomId) {
@@ -1270,6 +1299,20 @@ function applyRiskFilter(opts) {
   $('#riskAlertStatus').value = opts.alert_status || '';
   $('#riskKeyword').value = opts.keyword || '';
   loadRisks(1);
+}
+
+/* 切换到指定主视图（及子标签），并触发对应加载器 */
+function goView(view, sub) {
+  const tab = document.querySelector(`.tab[data-view="${view}"]`);
+  if (!tab) return;
+  if (!tab.classList.contains('active')) tab.click();
+  if (sub) {
+    const subBtn = document.querySelector(`#view-${view} .subtab[data-sub="${sub}"]`);
+    if (subBtn) {
+      if (!subBtn.classList.contains('active')) subBtn.click();
+      else { const L = SUB_LOADERS[sub]; L && L(); }
+    }
+  }
 }
 
 async function loadRisks(page = 1) {
