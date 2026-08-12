@@ -16,6 +16,7 @@ from app.api import (
     templates,
     wecom,
     wecom_config,
+    delivery_config,
 )
 
 api_router = APIRouter()
@@ -29,6 +30,7 @@ api_router.include_router(models.router, prefix="/models", tags=["模型配置"]
 api_router.include_router(rooms.router, prefix="/rooms", tags=["群管理"])
 api_router.include_router(settings_api.router, prefix="/settings", tags=["设置"])
 api_router.include_router(wecom_config.router, tags=["企业微信配置"])
+api_router.include_router(delivery_config.router, tags=["投递配置"])
 api_router.include_router(wecom.router, prefix="/wecom", tags=["企业微信辅助接口"])
 api_router.include_router(extract_api.router, prefix="/extract", tags=["抽取对比"])
 

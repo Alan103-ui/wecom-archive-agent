@@ -164,6 +164,7 @@ const SUB_LOADERS = {
   'cfg-extract-compare': loadExtractCompare,
   'cfg-system': loadSystem,
   'cfg-wecom': loadWeComConfig,
+  'cfg-settings': loadSysSettings,
 };
 function bindSubtabs() {
   $$('.view').forEach((v) => {
@@ -859,6 +860,110 @@ async function loadWeComConfig() {
     $('#wcSavedAt').textContent = c.updated_at ? '上次保存：' + c.updated_at : '';
   } catch (e) { toast('加载企业微信配置失败：' + e.message, 'err'); }
 }
+
+// ---------------------------------------------------------------- 系统设置（标准化通知投递）
+async function loadSysSettings() {
+  try {
+    const [smtp, app] = await Promise.all([req('/smtp-config'), req('/wecom-app-config')]);
+    $('#smtpHost').value = smtp.host || '';
+    $('#smtpPort').value = smtp.port || 465;
+    $('#smtpUser').value = smtp.user || '';
+    $('#smtpFrom').value = smtp.from || '';
+    $('#smtpTls').checked = smtp.tls !== false;
+    $('#smtpPass').value = '';
+    const smtpOk = !!(smtp.host && smtp.user && smtp.has_pass);
+    $('#smtpState').className = 'badge ' + (smtpOk ? 'ok' : 'warn');
+    $('#smtpState').textContent = smtpOk ? '已配置' : '未配置';
+    $('#appCorp').value = app.corp_id || '';
+    $('#appAgent').value = app.agent_id || '';
+    $('#appSecret').value = '';
+    const appOk = !!(app.corp_id && app.agent_id && app.has_secret);
+    $('#appState').className = 'badge ' + (appOk ? 'ok' : 'warn');
+    $('#appState').textContent = appOk ? '已配置' : '未配置';
+  } catch (e) { toast('加载系统设置失败：' + e.message, 'err'); }
+}
+
+function _smtpBody() {
+  return {
+    host: $('#smtpHost').value.trim(),
+    port: parseInt($('#smtpPort').value, 10) || 465,
+    user: $('#smtpUser').value.trim(),
+    pass_field: $('#smtpPass').value,
+    from_addr: $('#smtpFrom').value.trim(),
+    tls: $('#smtpTls').checked,
+  };
+}
+function _appBody() {
+  return {
+    corp_id: $('#appCorp').value.trim(),
+    agent_id: $('#appAgent').value.trim(),
+    agent_secret: $('#appSecret').value,
+  };
+}
+
+async function _saveThenTest(channel, target, saveUrl, saveBody, msgSel, btnSel) {
+  $(btnSel).disabled = true;
+  try {
+    await req(saveUrl, { method: 'PUT', body: JSON.stringify(saveBody) });
+  } catch (e) {
+    $(msgSel).textContent = '保存失败：' + e.message;
+    $(msgSel).style.color = '#dc2626';
+    return;
+  }
+  try {
+    const r = await req('/delivery-config/test', { method: 'POST', body: JSON.stringify({ channel, target }) });
+    $(msgSel).textContent = (r.ok ? '✅ ' : '❌ ') + (r.detail || '');
+    $(msgSel).style.color = r.ok ? '#07c160' : '#dc2626';
+    loadSysSettings();
+  } catch (e) {
+    $(msgSel).textContent = '测试请求失败：' + e.message;
+    $(msgSel).style.color = '#dc2626';
+  } finally {
+    $(btnSel).disabled = false;
+  }
+}
+
+$('#smtpSave').onclick = async () => {
+  $('#smtpSave').disabled = true;
+  try {
+    const r = await req('/smtp-config', { method: 'PUT', body: JSON.stringify(_smtpBody()) });
+    toast(r.message || '已保存', 'ok');
+    $('#smtpPass').value = '';
+    loadSysSettings();
+  } catch (e) { toast('保存失败：' + e.message, 'err'); }
+  finally { $('#smtpSave').disabled = false; }
+};
+$('#smtpTest').onclick = async () => {
+  const to = $('#smtpTestTo').value.trim();
+  if (!to) { $('#smtpMsg').textContent = '请先填写测试收件人'; $('#smtpMsg').style.color = '#dc2626'; return; }
+  await _saveThenTest('email', to, '/smtp-config', _smtpBody(), '#smtpMsg', '#smtpTest');
+};
+$('#appSave').onclick = async () => {
+  $('#appSave').disabled = true;
+  try {
+    const r = await req('/wecom-app-config', { method: 'PUT', body: JSON.stringify(_appBody()) });
+    toast(r.message || '已保存', 'ok');
+    $('#appSecret').value = '';
+    loadSysSettings();
+  } catch (e) { toast('保存失败：' + e.message, 'err'); }
+  finally { $('#appSave').disabled = false; }
+};
+$('#appTest').onclick = async () => {
+  const to = $('#appTestTo').value.trim();
+  if (!to) { $('#appMsg').textContent = '请先填写测试接收人（userid 或 party:部门ID）'; $('#appMsg').style.color = '#dc2626'; return; }
+  await _saveThenTest('app', to, '/wecom-app-config', _appBody(), '#appMsg', '#appTest');
+};
+$('#whTest').onclick = async () => {
+  const url = $('#whUrl').value.trim();
+  if (!url) { $('#whMsg').textContent = '请填写 Webhook 地址'; $('#whMsg').style.color = '#dc2626'; return; }
+  $('#whTest').disabled = true;
+  try {
+    const r = await req('/delivery-config/test', { method: 'POST', body: JSON.stringify({ channel: 'webhook', target: url }) });
+    $('#whMsg').textContent = (r.ok ? '✅ ' : '❌ ') + (r.detail || '');
+    $('#whMsg').style.color = r.ok ? '#07c160' : '#dc2626';
+  } catch (e) { $('#whMsg').textContent = '测试请求失败：' + e.message; $('#whMsg').style.color = '#dc2626'; }
+  finally { $('#whTest').disabled = false; }
+};
 
 $('#wcShowKey').onchange = (e) => { $('#wcKey').type = e.target.checked ? 'text' : 'password'; };
 $('#wcSave').onclick = async () => {

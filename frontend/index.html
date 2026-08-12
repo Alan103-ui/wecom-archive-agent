@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>企业微信会话存档</title>
-<link rel="stylesheet" href="/static/style.css?v=33">
+<link rel="stylesheet" href="/static/style.css?v=34">
 </head>
 <body>
 
@@ -325,6 +325,7 @@
       <button class="subtab" data-sub="cfg-models">模型配置</button>
       <button class="subtab" data-sub="cfg-extract-compare">抽取对比</button>
       <button class="subtab" data-sub="cfg-system">系统</button>
+      <button class="subtab" data-sub="cfg-settings">系统设置</button>
     </div>
 
     <div class="subview active" id="sub-cfg-wecom">
@@ -553,6 +554,60 @@
         <pre id="configBox" class="code"></pre>
       </div>
     </div>
+
+    <div class="subview" id="sub-cfg-settings">
+      <div class="panel">
+        <h3>系统设置 · 标准化通知投递配置</h3>
+        <p class="hint">所有投递通道凭据在此统一配置，界面保存即生效、重启后依然有效（不再依赖 .env 文件）。</p>
+      </div>
+
+      <!-- 邮件 SMTP -->
+      <div class="panel">
+        <div class="panel-head"><h3>📧 邮件通知（SMTP）</h3><span class="badge" id="smtpState">检测中…</span></div>
+        <div class="form-grid">
+          <div class="form-row"><label>SMTP 主机</label><input id="smtpHost" placeholder="如 smtp.exmail.qq.com"></div>
+          <div class="form-row"><label>端口</label><input id="smtpPort" type="number" value="465"></div>
+          <div class="form-row"><label>发件账号</label><input id="smtpUser" placeholder="如 risk@corp.com"></div>
+          <div class="form-row"><label>授权码/密码</label><input id="smtpPass" type="password" placeholder="留空=不修改"></div>
+          <div class="form-row"><label>发件人显示</label><input id="smtpFrom" placeholder="如 风险预警 &lt;risk@corp.com&gt;"></div>
+          <div class="form-row inline"><label class="chk"><input id="smtpTls" type="checkbox" checked> 使用 TLS/SSL 加密</label></div>
+        </div>
+        <div class="form-row"><label>测试收件人</label><input id="smtpTestTo" placeholder="验证用收件邮箱，如 admin@corp.com"></div>
+        <div class="row-btns">
+          <button class="btn btn-sm btn-primary" id="smtpSave">保存</button>
+          <button class="btn btn-sm" id="smtpTest">保存并测试</button>
+        </div>
+        <div class="form-hint" id="smtpMsg"></div>
+      </div>
+
+      <!-- 企微应用消息 -->
+      <div class="panel">
+        <div class="panel-head"><h3>👤 企业微信应用消息</h3><span class="badge" id="appState">检测中…</span></div>
+        <p class="hint">与企业微信 TAB 共享同一套凭证（corp_id / agent_id / agent_secret），此处为投递专用的快捷配置。</p>
+        <div class="form-grid">
+          <div class="form-row"><label>企业 ID (corp_id)</label><input id="appCorp" placeholder="企业微信后台「我的企业」处获取"></div>
+          <div class="form-row"><label>应用 ID (agent_id)</label><input id="appAgent" placeholder="自建应用 AgentId"></div>
+          <div class="form-row"><label>应用 Secret</label><input id="appSecret" type="password" placeholder="留空=不修改"></div>
+        </div>
+        <div class="form-row"><label>测试接收人</label><input id="appTestTo" placeholder="userid 或 party:部门ID，如 ZhangSan / party:2"></div>
+        <div class="row-btns">
+          <button class="btn btn-sm btn-primary" id="appSave">保存</button>
+          <button class="btn btn-sm" id="appTest">保存并测试</button>
+        </div>
+        <div class="form-hint" id="appMsg"></div>
+      </div>
+
+      <!-- 群机器人 Webhook -->
+      <div class="panel">
+        <div class="panel-head"><h3>🤖 企业微信群机器人（Webhook）</h3><span class="badge">即测即用</span></div>
+        <p class="hint">群机器人无全局配置；正式投递目标请在「⚠️ 风险预警 → 规则与层」的实际管理层中添加。此处仅提供独立的连接测试。</p>
+        <div class="form-row"><label>Webhook 地址</label><input id="whUrl" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."></div>
+        <div class="row-btns">
+          <button class="btn btn-sm" id="whTest">测试发送</button>
+        </div>
+        <div class="form-hint" id="whMsg"></div>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -744,6 +799,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=33"></script>
+<script src="/static/app.js?v=34"></script>
 </body>
 </html>

@@ -110,5 +110,11 @@ def verify_token(corpid: str, corpsecret: str, base_url: str | None = None) -> d
 
 
 def get_access_token_from_settings() -> str | None:
-    """用当前内存 settings 的 corpid + 应用 secret 取 token（告警通道复用）。"""
-    return get_access_token(settings.WECOM_CORP_ID, settings.WECOM_AGENT_SECRET)
+    """用运行期企微应用凭证取 token（告警通道复用，重启安全）。
+
+    凭证来源：wecom_config 单行(id=1)，兜底 env/settings。
+    """
+    from app.services.settings_store import get_wecom_app_config
+
+    cfg = get_wecom_app_config()
+    return get_access_token(cfg["corp_id"], cfg["agent_secret"], cfg["api_base_url"])

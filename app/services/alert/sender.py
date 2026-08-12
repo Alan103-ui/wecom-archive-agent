@@ -21,10 +21,9 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models.risk import AlertLog, AlertTarget, RiskEvent
 from app.services.risk import categories as cat
-from app.services.wecom_token import get_access_token_from_settings
+from app.services.settings_store import get_smtp_config, get_wecom_app_config
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +70,8 @@ def _send_webhook(target: str, event: RiskEvent) -> tuple[bool, str]:
 
 
 def _send_app(target: str, event: RiskEvent) -> tuple[bool, str]:
-    token = get_access_token_from_settings()
+    cfg = get_wecom_app_config()
+    token = _get_app_token(cfg)
     if not token:
         return False, "未配置企微 CORP_ID/AGENT_SECRET"
     body = {
@@ -82,7 +82,7 @@ def _send_app(target: str, event: RiskEvent) -> tuple[bool, str]:
         body["toparty"] = target.split(":", 1)[1]
     else:
         body["touser"] = target or "@all"
-    body["agentid"] = settings.WECOM_AGENT_ID
+    body["agentid"] = cfg["agent_id"]
     try:
         with httpx.Client(timeout=10) as client:
             r = client.post(
@@ -99,13 +99,14 @@ def _send_app(target: str, event: RiskEvent) -> tuple[bool, str]:
 
 
 def _send_email(target: str, event: RiskEvent) -> tuple[bool, str]:
-    if not (settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASS):
+    cfg = get_smtp_config()
+    if not (cfg["host"] and cfg["user"] and cfg["pass"]):
         return False, "SMTP 未配置"
     if not target or "@" not in target:
         return False, "收件人邮箱未配置"
     try:
         msg = MIMEMultipart()
-        msg["From"] = settings.SMTP_FROM or settings.SMTP_USER
+        msg["From"] = cfg["from"] or cfg["user"]
         msg["To"] = target
         msg["Subject"] = f"[风险预警] {event.category}（{_sev_label(event.severity)}）"
         body = (
@@ -116,13 +117,20 @@ def _send_email(target: str, event: RiskEvent) -> tuple[bool, str]:
         )
         msg.attach(MIMEText(body, "plain", "utf-8"))
 
-        ctx = ssl.create_default_context() if settings.SMTP_TLS else None
-        with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=ctx) as s:
-            s.login(settings.SMTP_USER, settings.SMTP_PASS)
+        ctx = ssl.create_default_context() if cfg["tls"] else None
+        with smtplib.SMTP_SSL(cfg["host"], cfg["port"], context=ctx) as s:
+            s.login(cfg["user"], cfg["pass"])
             s.send_message(msg)
         return True, f"已发邮件到 {target}"
     except Exception as e:  # noqa: BLE001
         return False, f"邮件发送失败：{e}"
+
+
+def _get_app_token(cfg: dict) -> str | None:
+    """用运行期企微应用凭证取 access_token（重启安全）。"""
+    from app.services.wecom_token import get_access_token
+
+    return get_access_token(cfg["corp_id"], cfg["agent_secret"], cfg["api_base_url"])
 
 
 def _send_system(target: str, event: RiskEvent) -> tuple[bool, str]:
