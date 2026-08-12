@@ -21,6 +21,8 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.db.database import SessionLocal
+from app.models.entities import ChatRoom
 from app.models.risk import AlertLog, AlertTarget, RiskEvent
 from app.services.risk import categories as cat
 from app.services.settings_store import get_smtp_config, get_wecom_app_config
@@ -37,6 +39,20 @@ _SEV_LABEL = {
 
 def _sev_label(sev: str) -> str:
     return _SEV_LABEL.get(sev, sev)
+
+
+def _room_name(room_id: str | None) -> str:
+    """查群名称；查不到或失败则回退到 room_id（单聊返回「单聊」）。"""
+    if not room_id:
+        return "单聊"
+    try:
+        with SessionLocal() as db:
+            room = db.get(ChatRoom, room_id)
+            if room and room.name:
+                return room.name
+    except Exception:  # noqa: BLE001
+        logger.warning("查群名称失败 room_id=%s", room_id)
+    return room_id
 
 
 def _build_markdown(event: RiskEvent) -> str:
@@ -71,25 +87,34 @@ def _trim_bytes(s: str | None, max_bytes: int) -> str:
 
 
 def _build_text_notice_card(event: RiskEvent) -> dict:
-    """构造企微群机器人 template_card（text_notice），突出严重度、减少重复。"""
-    biz = event.biz_time.strftime("%m-%d %H:%M") if event.biz_time else "-"
-    room = event.room_id or "单聊"
+    """构造企微群机器人 template_card（text_notice），清晰列出关键字段。
+
+    关键数据分行展示：群 / 事件内容 / 发送人 / 时间。
+    """
+    biz = event.biz_time.strftime("%Y-%m-%d %H:%M") if event.biz_time else "-"
+    room = _room_name(event.room_id)
     sender = event.from_id or "-"
     cat = event.category or "风险事件"
     sev = _sev_label(event.severity)
     snippet = event.snippet or "(命中风险内容)"
+    sub_lines = (
+        f"群：{room}\n"
+        f"事件内容：{snippet}\n"
+        f"发送人：{sender}\n"
+        f"时间：{biz}"
+    )
     return {
         "card_type": "text_notice",
         "source": {"desc": "会话存档风控", "desc_color": 0},
         "main_title": {
             "title": _trim_bytes(f"⚠️ {cat}", 128),
-            "desc": _trim_bytes(snippet, 512),
+            "desc": _trim_bytes(f"严重度：{sev}", 128),
         },
         "emphasis_content": {
             "title": _trim_bytes(sev, 26),
             "desc": "严重度",
         },
-        "sub_title_text": _trim_bytes(f"{room} · {sender} · {biz}", 64),
+        "sub_title_text": _trim_bytes(sub_lines, 512),
         "card_action": {"type": 1, "url": "http://127.0.0.1:8002"},
     }
 
