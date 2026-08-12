@@ -487,7 +487,7 @@ window.showRecord = async function (id) {
 
 $('#recSearch').onclick = () => loadRecords(1);
 $('#recFlatten').onchange = () => loadRecords(1);
-$('#recKeyword').onkeydown = (e) => e.key === 'Enter' && loadRecords(1);
+$('#recKeyword').onkeydown = (e) => { if (e.key === 'Enter') loadRecords(1); };
 $('#recExport').onclick = () => {
   const t = $('#recTemplate').value;
   if (!t) return toast('请先选择要导出的模板', 'err');
@@ -557,7 +557,7 @@ window.retryStage = async function (id, stage) {
 };
 
 $('#attSearch').onclick = () => loadAttachments(1);
-$('#attKeyword').onkeydown = (e) => e.key === 'Enter' && loadAttachments(1);
+$('#attKeyword').onkeydown = (e) => { if (e.key === 'Enter') loadAttachments(1); };
 $('#attResetFailed').onclick = async () => {
   if (!confirm('把所有失败的附件重置为待处理？')) return;
   try { const r = await req('/system/pipeline/reset-failed', { method: 'POST' }); toast(r.message, 'ok'); loadAttachments(1); }
@@ -608,7 +608,7 @@ window.showMessage = async function (id) {
 };
 
 $('#msgSearch').onclick = () => loadMessages(1);
-$('#msgKeyword').onkeydown = (e) => e.key === 'Enter' && loadMessages(1);
+$('#msgKeyword').onkeydown = (e) => { if (e.key === 'Enter') loadMessages(1); };
 
 /* ================ 模板 ================ */
 let editingTplId = null;
@@ -1136,7 +1136,7 @@ window.showRisk = async function (id) {
 };
 
 $('#riskSearch').onclick = () => loadRisks(1);
-$('#riskKeyword').onkeydown = (e) => e.key === 'Enter' && loadRisks(1);
+$('#riskKeyword').onkeydown = (e) => { if (e.key === 'Enter') loadRisks(1); };
 $('#riskRescan').onclick = async () => {
   if (!confirm('把全部已扫消息重置为待扫描，下一轮风险作业将重扫（已发预警可能重复）？')) return;
   try { const r = await req('/risks/rescan', { method: 'POST', body: JSON.stringify({}) }); toast(r.message, 'ok'); loadRisks(1); }
