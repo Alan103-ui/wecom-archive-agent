@@ -71,8 +71,8 @@ def _trim_bytes(s: str | None, max_bytes: int) -> str:
 
 
 def _build_text_notice_card(event: RiskEvent) -> dict:
-    """构造企微群机器人 template_card（text_notice），比 markdown 更直观。"""
-    biz = event.biz_time.strftime("%H:%M") if event.biz_time else "-"
+    """构造企微群机器人 template_card（text_notice），突出严重度、减少重复。"""
+    biz = event.biz_time.strftime("%m-%d %H:%M") if event.biz_time else "-"
     room = event.room_id or "单聊"
     sender = event.from_id or "-"
     cat = event.category or "风险事件"
@@ -80,16 +80,16 @@ def _build_text_notice_card(event: RiskEvent) -> dict:
     snippet = event.snippet or "(命中风险内容)"
     return {
         "card_type": "text_notice",
-        "source": {"desc": "企业微信会话存档", "desc_color": 0},
+        "source": {"desc": "会话存档风控", "desc_color": 0},
         "main_title": {
-            "title": _trim_bytes(f"⚠️ 风险预警 · {cat}", 128),
-            "desc": _trim_bytes(f"严重度：{sev} ｜ {snippet}", 512),
+            "title": _trim_bytes(f"⚠️ {cat}", 128),
+            "desc": _trim_bytes(snippet, 512),
         },
         "emphasis_content": {
-            "title": _trim_bytes(cat, 26),
-            "desc": _trim_bytes(sev, 27),
+            "title": _trim_bytes(sev, 26),
+            "desc": "严重度",
         },
-        "sub_title_text": _trim_bytes(f"群 {room} · 发送人 {sender} · {biz}", 64),
+        "sub_title_text": _trim_bytes(f"{room} · {sender} · {biz}", 64),
         "card_action": {"type": 1, "url": "http://127.0.0.1:8002"},
     }
 
