@@ -37,6 +37,7 @@ from app.models.entities import (
 )
 from app.services.extract import extractor, templates
 from app.services.extract.compare import EXTRACT_MODE_KEY, MODE_OCR_LLM, MODE_VISION
+from app.services.llm.client import get_model_for_role
 from app.models.model_config import ROLE_EXTRACT_VISION
 from app.services.kv_store import get_setting
 from app.services.ocr import engine as ocr_engine
@@ -627,8 +628,7 @@ def risk_scan(batch_size: int | None = None) -> dict:
                 stats["errors"].append(str(e)[:200])
                 logger.exception("风险扫描消息异常 msgid=%s：%s", m.msgid, e)
             m.risk_scanned = True
-
-        db.commit()
+            db.commit()  # 增量提交：长任务即使被中断也不丢已完成的扫描进度
     finally:
         db.close()
 

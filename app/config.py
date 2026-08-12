@@ -119,7 +119,8 @@ class Settings(BaseSettings):
     # 双引擎：关键词规则 + LLM 语义。关闭 LLM 仅用关键词（省 token）
     RISK_LLM_ENABLED: bool = True
     # 为省成本，仅当关键词未命中时才调 LLM（true=省，false=每条都跑 LLM）
-    RISK_LLM_ONLY_WHEN_KEYWORD_MISS: bool = False
+    # 标准化默认开启：关键词已命中的消息不再重复跑 LLM，显著减少远程模型调用与扫描耗时
+    RISK_LLM_ONLY_WHEN_KEYWORD_MISS: bool = True
     # 风险扫描作业间隔（秒），独立于同步/流水线
     RISK_SCAN_INTERVAL_SECONDS: int = 45
     # 单轮风险扫描最多处理多少条未扫消息
