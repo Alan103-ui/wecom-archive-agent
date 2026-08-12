@@ -267,10 +267,8 @@ async function loadRooms() {
 }
 
 window.openRoom = async function (roomId) {
-  const [rooms, msgs, recs, evs, rules] = await Promise.all([
+  const [rooms, evs, rules] = await Promise.all([
     req('/rooms').catch(() => []),
-    req('/messages?room_id=' + encodeURIComponent(roomId) + '&page=1&page_size=8').catch(() => ({ items: [] })),
-    req('/records?room_id=' + encodeURIComponent(roomId) + '&page=1&page_size=8').catch(() => ({ items: [] })),
     req('/risks/events?room_id=' + encodeURIComponent(roomId) + '&page=1&page_size=8').catch(() => ({ items: [] })),
     req('/risks/rules').catch(() => []),
   ]);
@@ -296,8 +294,6 @@ window.openRoom = async function (roomId) {
     <div class="rr-layers">${layerTags([...lset])}</div>
     <h4>本群适用的风险规则（${applicable.length}）</h4>
     ${applicable.length ? mini(applicable, (rl) => `<div class="dist-item"><span>${esc(rl.name)} · ${SEV_LABEL[rl.severity] || rl.severity}</span><span class="muted">${esc(rl.category)}</span></div>`) : '<div class="dist-item"><span>无（仅全群规则生效）</span></div>'}
-    <h4>最近消息</h4>${mini(msgs.items, (m) => `<div class="dist-item"><span>${fmtTime(m.msg_time)} · ${esc(m.from_name || m.from_id)}</span><span class="muted">${esc((m.content_text || '').slice(0, 40))}</span></div>`)}
-    <h4>结构化记录</h4>${mini(recs.items, (r) => `<div class="dist-item"><span>${esc(r.template_name || '-')}</span><span class="muted">${fmtTime(r.biz_time)}</span></div>`)}
     <h4>风险事件</h4>${mini(evs.items, (r) => `<div class="dist-item"><span>${sevTag(r.severity)} ${esc(r.category)}</span><span class="muted">${esc((r.snippet || '').slice(0, 30))}</span></div>`)}
     <div class="row-btns">
       <button class="btn btn-sm" id="drToggleRoom">${room.enabled ? '关闭采集' : '开启采集'}</button>
