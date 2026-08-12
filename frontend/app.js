@@ -893,6 +893,14 @@ function _smtpBody() {
     tls: $('#smtpTls').checked,
   };
 }
+function _validateSmtp(body, forTest) {
+  const EMAIL_RE = /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/;
+  if (!body.host) return '请填写 SMTP 主机';
+  if (!body.user) return '请填写发件账号';
+  if (forTest && !$('#smtpTestTo').value.trim()) return '请先填写测试收件人';
+  if (body.from_addr && !EMAIL_RE.test(body.from_addr)) return '发件人邮箱地址格式不正确';
+  return '';
+}
 function _appBody() {
   return {
     corp_id: $('#appCorp').value.trim(),
@@ -924,9 +932,12 @@ async function _saveThenTest(channel, target, saveUrl, saveBody, msgSel, btnSel)
 }
 
 $('#smtpSave').onclick = async () => {
+  const body = _smtpBody();
+  const err = _validateSmtp(body, false);
+  if (err) { toast(err, 'err'); return; }
   $('#smtpSave').disabled = true;
   try {
-    const r = await req('/smtp-config', { method: 'PUT', body: JSON.stringify(_smtpBody()) });
+    const r = await req('/smtp-config', { method: 'PUT', body: JSON.stringify(body) });
     toast(r.message || '已保存', 'ok');
     $('#smtpPass').value = '';
     loadSysSettings();
@@ -934,9 +945,10 @@ $('#smtpSave').onclick = async () => {
   finally { $('#smtpSave').disabled = false; }
 };
 $('#smtpTest').onclick = async () => {
-  const to = $('#smtpTestTo').value.trim();
-  if (!to) { $('#smtpMsg').textContent = '请先填写测试收件人'; $('#smtpMsg').style.color = '#dc2626'; return; }
-  await _saveThenTest('email', to, '/smtp-config', _smtpBody(), '#smtpMsg', '#smtpTest');
+  const body = _smtpBody();
+  const err = _validateSmtp(body, true);
+  if (err) { $('#smtpMsg').textContent = err; $('#smtpMsg').style.color = '#dc2626'; return; }
+  await _saveThenTest('email', $('#smtpTestTo').value.trim(), '/smtp-config', body, '#smtpMsg', '#smtpTest');
 };
 $('#appSave').onclick = async () => {
   $('#appSave').disabled = true;

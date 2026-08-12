@@ -11,9 +11,10 @@ app/api/delivery_config.py — 标准化「系统设置 / 通知投递」后端
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
 from app.models.risk import AlertTarget, RiskEvent
@@ -26,6 +27,8 @@ from app.services.settings_store import (
 )
 
 router = APIRouter()
+
+_EMAIL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
 
 # ---------------------------------------------------------------- SMTP
@@ -53,6 +56,8 @@ def get_smtp():
 
 @router.put("/smtp-config", summary="保存邮件(SMTP)配置")
 def put_smtp(payload: SmtpIn):
+    if payload.from_addr and not _EMAIL_RE.match(payload.from_addr):
+        raise HTTPException(status_code=400, detail="发件人邮箱地址格式不正确")
     set_smtp_config({
         "host": payload.host,
         "port": payload.port,
