@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>企业微信会话存档</title>
-<link rel="stylesheet" href="/static/style.css?v=22">
+<link rel="stylesheet" href="/static/style.css?v=24">
 </head>
 <body>
 
@@ -92,6 +92,7 @@
       <button class="subtab active" data-sub="risk-events">风险事件</button>
       <button class="subtab" data-sub="risk-routing">路由全景</button>
       <button class="subtab" data-sub="risk-config">规则与层</button>
+      <button class="subtab" data-sub="risk-ocr-vision">🖼️ OCR 视觉升级</button>
     </div>
 
     <div class="subview active" id="sub-risk-events">
@@ -175,7 +176,10 @@
         </div>
       </div>
 
-      <div class="panel" style="margin-top:16px">
+    </div>
+
+    <div class="subview" id="sub-risk-ocr-vision">
+      <div class="panel">
         <div class="panel-head"><h3>OCR 视觉升级</h3>
           <span class="hint">RapidOCR 为主力；低置信度 / 空结果 / 指定模板由视觉模型兜底（需已配置「视觉抽取(多模态)」连接）</span></div>
         <div class="kv-form" id="ocrVisionBox">
@@ -676,6 +680,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=23"></script>
+<script src="/static/app.js?v=24"></script>
 </body>
 </html>

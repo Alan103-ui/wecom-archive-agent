@@ -136,6 +136,7 @@ const SUB_LOADERS = {
   'risk-events': () => loadRisks(1),
   'risk-routing': loadRouting,
   'risk-config': loadRiskConfig,
+  'risk-ocr-vision': loadOcrVisionConfig,
   'data-records': () => initRecords(),
   'data-attachments': () => loadAttachments(1),
   'data-messages': () => loadMessages(1),
