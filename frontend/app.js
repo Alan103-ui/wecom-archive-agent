@@ -70,6 +70,24 @@ const qs = (o) =>
     .filter(([, v]) => v !== '' && v !== null && v !== undefined)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 
+/* ---------------- 群名称解析（rows 里只带 room_id，前端按缓存 map 反查名称） ---------------- */
+let _roomNameMap = null;
+let _roomNameLoading = null;
+async function getRoomNameMap() {
+  if (_roomNameMap) return _roomNameMap;
+  if (_roomNameLoading) return _roomNameLoading;
+  _roomNameLoading = req('/rooms')
+    .then((rooms) => { _roomNameMap = new Map(rooms.map((r) => [r.room_id, r.name || r.room_id])); return _roomNameMap; })
+    .catch(() => { _roomNameMap = new Map(); return _roomNameMap; })
+    .finally(() => { _roomNameLoading = null; });
+  return _roomNameLoading;
+}
+function roomName(rid) {
+  if (!rid) return '(单聊)';
+  if (_roomNameMap && _roomNameMap.has(rid)) return _roomNameMap.get(rid);
+  return rid;
+}
+
 /* ---------------- 风险相关枚举与路由聚合（前端，依据后端规则数据推导） ---------------- */
 const SEV_LABEL = { low: '低', medium: '中', high: '高', critical: '严重' };
 // 严重度兜底映射：规则未显式指定通知层时，按严重度决定推给哪些管理层
@@ -397,14 +415,15 @@ async function loadRecords(page = 1) {
   wrap.innerHTML = '<div class="empty">加载中…</div>';
 
   try {
+    await getRoomNameMap();
     if (flatten) {
       const d = await req('/records/flatten?' + qs({ template_name: tplName, page, page_size: 30 }));
       if (!d.rows.length) { wrap.innerHTML = '<div class="empty">暂无数据</div>'; $('#recPager').innerHTML = ''; return; }
       wrap.innerHTML = `<table><thead><tr>
-          <th>业务时间</th>${d.columns.map((c) => `<th>${esc(c.label)}</th>`).join('')}<th>置信度</th><th>操作</th>
+          <th>业务时间</th><th>群名称</th>${d.columns.map((c) => `<th>${esc(c.label)}</th>`).join('')}<th>置信度</th><th>操作</th>
         </tr></thead><tbody>${
           d.rows.map((r) => `<tr>
-            <td>${fmtTime(r.__biz_time)}</td>
+            <td>${fmtTime(r.__biz_time)}</td><td>${esc(roomName(r.__room_id))}</td>
             ${d.columns.map((c) => `<td class="wrap">${esc(r[c.key] ?? '')}</td>`).join('')}
             <td>${r.__confidence != null ? (r.__confidence * 100).toFixed(0) + '%' : '-'}</td>
             <td><button class="btn btn-sm" onclick="showRecord('${r.__id}')">详情</button> <button class="btn btn-sm btn-warn" onclick="delRecord('${r.__id}')">删除</button></td>
@@ -417,10 +436,10 @@ async function loadRecords(page = 1) {
       }));
       if (!d.items.length) { wrap.innerHTML = '<div class="empty">暂无数据</div>'; $('#recPager').innerHTML = ''; return; }
       wrap.innerHTML = `<table><thead><tr>
-          <th>业务时间</th><th>模板</th><th>状态</th><th>抽取字段</th><th>置信度</th><th>复核</th><th>操作</th>
+          <th>业务时间</th><th>群名称</th><th>模板</th><th>状态</th><th>抽取字段</th><th>置信度</th><th>复核</th><th>操作</th>
         </tr></thead><tbody>${
           d.items.map((r) => `<tr>
-            <td>${fmtTime(r.biz_time)}</td><td>${esc(r.template_name || '-')}</td>
+            <td>${fmtTime(r.biz_time)}</td><td>${esc(roomName(r.room_id))}</td><td>${esc(r.template_name || '-')}</td>
             <td>${tag(r.status)}</td>
             <td class="wrap">${esc(JSON.stringify(r.fields_json || {}).slice(0, 160))}</td>
             <td>${r.confidence != null ? (r.confidence * 100).toFixed(0) + '%' : '-'}</td>
@@ -486,14 +505,16 @@ $('#recExport').onclick = () => {
 /* ================ 附件 ================ */
 async function loadAttachments(page = 1) {
   const tbody = $('#attTable').querySelector('tbody');
-  tbody.innerHTML = '<tr><td colspan="8" class="empty">加载中…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="empty">加载中…</td></tr>';
   try {
+    await getRoomNameMap();
     const d = await req('/attachments?' + qs({
       page, page_size: 20, keyword: $('#attKeyword').value,
       ocr_status: $('#attOcr').value, extract_status: $('#attExtract').value,
     }));
     tbody.innerHTML = d.items.length ? d.items.map((a) => `<tr>
         <td class="wrap">${esc(a.file_name || '(无名)')}</td>
+        <td>${esc(roomName(a.room_id))}</td>
         <td>${esc(a.media_type)}</td><td>${fmtSize(a.file_size)}</td>
         <td>${tag(a.download_status)}</td><td>${tag(a.ocr_status)}</td><td>${tag(a.extract_status)}</td>
         <td>${fmtTime(a.created_at)}</td>
@@ -501,9 +522,9 @@ async function loadAttachments(page = 1) {
           <button class="btn btn-sm" onclick="showAttachment('${a.id}')">详情</button>
           <button class="btn btn-sm" onclick="retryAtt('${a.id}')">重跑</button>
         </td></tr>`).join('')
-      : '<tr><td colspan="8" class="empty">暂无附件</td></tr>';
+      : '<tr><td colspan="9" class="empty">暂无附件</td></tr>';
     renderPager('#attPager', d.total, page, 20, loadAttachments);
-  } catch (e) { tbody.innerHTML = `<tr><td colspan="8" class="empty">加载失败：${esc(e.message)}</td></tr>`; }
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="9" class="empty">加载失败：${esc(e.message)}</td></tr>`; }
 }
 
 window.retryAtt = async function (id) {
@@ -554,8 +575,9 @@ $('#attResetFailed').onclick = async () => {
 /* ================ 消息 ================ */
 async function loadMessages(page = 1) {
   const tbody = $('#msgTable').querySelector('tbody');
-  tbody.innerHTML = '<tr><td colspan="6" class="empty">加载中…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" class="empty">加载中…</td></tr>';
   try {
+    await getRoomNameMap();
     const d = await req('/messages?' + qs({
       page, page_size: 20, keyword: $('#msgKeyword').value,
       msg_type: $('#msgType').value,
@@ -563,13 +585,13 @@ async function loadMessages(page = 1) {
     }));
     tbody.innerHTML = d.items.length ? d.items.map((m) => `<tr>
         <td>${m.seq}</td><td>${fmtTime(m.msg_time)}</td>
-        <td>${esc(m.from_name || m.from_id)}</td><td>${esc(m.msg_type)}</td>
+        <td>${esc(m.from_name || m.from_id)}</td><td>${esc(roomName(m.room_id))}</td><td>${esc(m.msg_type)}</td>
         <td class="wrap">${esc((m.content_text || '').slice(0, 120))}</td>
         <td>${m.attachment_count ? `<button class="btn btn-sm" onclick="showMessage('${m.id}')">${m.attachment_count} 个</button>` : '-'} <button class="btn btn-sm btn-warn" onclick="delMessage('${m.id}')">删除</button></td>
       </tr>`).join('')
-      : '<tr><td colspan="6" class="empty">暂无消息</td></tr>';
+      : '<tr><td colspan="7" class="empty">暂无消息</td></tr>';
     renderPager('#msgPager', d.total, page, 20, loadMessages);
-  } catch (e) { tbody.innerHTML = `<tr><td colspan="6" class="empty">加载失败：${esc(e.message)}</td></tr>`; }
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="7" class="empty">加载失败：${esc(e.message)}</td></tr>`; }
 }
 
 window.showMessage = async function (id) {
