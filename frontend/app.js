@@ -871,12 +871,14 @@ async function loadSysSettings() {
     $('#smtpFrom').value = smtp.from || '';
     $('#smtpTls').checked = smtp.tls !== false;
     $('#smtpPass').value = '';
+    $('#smtpPass').placeholder = smtp.has_pass ? '已保存，留空=不修改' : '留空=不修改';
     const smtpOk = !!(smtp.host && smtp.user && smtp.has_pass);
     $('#smtpState').className = 'badge ' + (smtpOk ? 'ok' : 'warn');
     $('#smtpState').textContent = smtpOk ? '已配置' : '未配置';
     $('#appCorp').value = app.corp_id || '';
     $('#appAgent').value = app.agent_id || '';
     $('#appSecret').value = '';
+    $('#appSecret').placeholder = app.has_secret ? '已保存，留空=不修改' : '留空=不修改';
     const appOk = !!(app.corp_id && app.agent_id && app.has_secret);
     $('#appState').className = 'badge ' + (appOk ? 'ok' : 'warn');
     $('#appState').textContent = appOk ? '已配置' : '未配置';
