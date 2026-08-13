@@ -112,6 +112,23 @@ def healthz():
     return {"status": "ok"}
 
 
+@app.get("/WW_verify_{token}.txt", include_in_schema=False)
+def wecom_verify_file(token: str):
+    """企微可信域名验证：根目录校验文件。
+
+    将 WW_verify_*.txt 放在 frontend/ 下即可被企微访问到
+    http://<域名>/WW_verify_*.txt，用于完成可信域名归属认证。
+    """
+    f = FRONTEND_DIR / f"WW_verify_{token}.txt"
+    if f.exists() and f.is_file():
+        return FileResponse(
+            f,
+            media_type="text/plain",
+            headers={"Cache-Control": "no-store, must-revalidate"},
+        )
+    return JSONResponse(status_code=404, content={"detail": "not found"})
+
+
 # 前端：后端直接托管静态文件，不另起端口
 if FRONTEND_DIR.exists():
     app.mount("/static", NoCacheStaticFiles(directory=str(FRONTEND_DIR)), name="static")
