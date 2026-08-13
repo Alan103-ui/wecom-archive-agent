@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-13-1';
+const APP_JS_VERSION = '2026-08-13-2';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -238,6 +238,66 @@ function renderRoomCards(el, rooms, rules, byRoom) {
 }
 
 /* ================ 概览 ================ */
+
+// —— 风险图表（纯 SVG，零依赖）——
+const SEV_COLOR = { high: 'var(--err)', critical: 'var(--err)', medium: 'var(--warn)', low: 'var(--skip)', unknown: 'var(--skip)' };
+
+function svgTrend(daily) {
+  const data = [...(daily || [])].reverse();
+  const W = 640, H = 200, padL = 30, padR = 12, padT = 12, padB = 26;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const max = Math.max(1, ...data.map((d) => d.count || 0));
+  const n = data.length || 1;
+  const bw = innerW / n;
+  let s = `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + innerH}" stroke="var(--line)"/>`
+        + `<line x1="${padL}" y1="${padT + innerH}" x2="${W - padR}" y2="${padT + innerH}" stroke="var(--line)"/>`;
+  data.forEach((d, i) => {
+    const c = d.count || 0;
+    const h = (c / max) * innerH;
+    const w = bw * 0.66;
+    const x = padL + i * bw + (bw - w) / 2;
+    const y = padT + innerH - h;
+    s += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(0, h).toFixed(1)}" rx="2" fill="var(--accent)"><title>${esc(d.date)}：${c}</title></rect>`;
+    if (c > 0) s += `<text x="${(x + w / 2).toFixed(1)}" y="${(y - 3).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--muted)">${c}</text>`;
+    if (i % 2 === 0 || i === n - 1) {
+      s += `<text x="${(x + w / 2).toFixed(1)}" y="${(H - 8).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--muted)">${esc(String(d.date).slice(5))}</text>`;
+    }
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${s}</svg>`;
+}
+
+function svgHBar(obj, colorMap) {
+  const entries = Object.entries(obj || {});
+  if (!entries.length) return '<div class="empty" style="padding:16px">暂无数据</div>';
+  const max = Math.max(1, ...entries.map(([, v]) => v));
+  const labelW = 96, barW = 300, valW = 30, rowH = 22, padT = 2;
+  const H = padT * 2 + entries.length * rowH;
+  let s = '';
+  entries.forEach(([k, v], i) => {
+    const y = padT + i * rowH;
+    const w = Math.max(2, (v / max) * barW);
+    const color = (colorMap && (colorMap[k] || colorMap._)) || 'var(--accent)';
+    const label = k.length > 12 ? k.slice(0, 12) + '…' : k;
+    s += `<text x="0" y="${y + rowH / 2 + 4}" font-size="11" fill="var(--text)">${esc(label)}</text>`;
+    s += `<rect x="${labelW}" y="${y + 3}" width="${w.toFixed(1)}" height="${rowH - 9}" rx="3" fill="${color}"/>`;
+    s += `<text x="${labelW + w + 6}" y="${y + rowH / 2 + 4}" font-size="11" fill="var(--muted)">${v}</text>`;
+  });
+  return `<svg viewBox="0 0 ${labelW + barW + valW} ${H}" width="100%" style="display:block">${s}</svg>`;
+}
+
+function renderRiskCharts(stats) {
+  if (!stats) return;
+  const trend = document.getElementById('riskTrendChart');
+  const sev = document.getElementById('sevChart');
+  const cat = document.getElementById('catChart');
+  if (trend) trend.innerHTML = svgTrend(stats.daily);
+  if (sev) sev.innerHTML = svgHBar(stats.by_severity, SEV_COLOR);
+  if (cat) {
+    const top = Object.entries(stats.by_category || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    cat.innerHTML = svgHBar(Object.fromEntries(top));
+  }
+}
+
 async function loadDashboard() {
   let s;
   try { s = await req('/system/stats'); } catch (e) { return toast('加载统计失败：' + e.message, 'err'); }
@@ -292,6 +352,7 @@ async function loadDashboard() {
   const rules = await req('/risks/rules').catch(() => []);
   const rstats = await req('/risks/stats').catch(() => ({ by_room: {} }));
   renderRoomCards($('#roomCards'), rooms, rules, rstats.by_room || {});
+  renderRiskCharts(rstats);
 }
 
 /* ================ 群与监控 ================ */

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>企业微信会话存档</title>
-<link rel="stylesheet" href="/static/style.css?v=40">
+<link rel="stylesheet" href="/static/style.css?v=41">
 </head>
 <body>
 
@@ -47,6 +47,20 @@
     </div>
 
     <div class="cards" id="statCards"></div>
+
+    <div class="grid-2" style="margin-top:16px">
+      <div class="panel">
+        <div class="panel-head"><h3>风险事件趋势（近 14 天）</h3><span class="hint">每日新增风险事件数</span></div>
+        <div id="riskTrendChart" class="chart-box"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>风险分布</h3><span class="hint">按严重度 / 分类</span></div>
+        <div class="dist-2">
+          <div><h4>严重度</h4><div id="sevChart" class="chart-box"></div></div>
+          <div><h4>分类（TOP8）</h4><div id="catChart" class="chart-box"></div></div>
+        </div>
+      </div>
+    </div>
 
     <div class="grid-2">
       <div class="panel">
@@ -806,6 +820,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=40"></script>
+<script src="/static/app.js?v=41"></script>
 </body>
 </html>
