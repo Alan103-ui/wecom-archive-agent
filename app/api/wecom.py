@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.models.entities import ChatRoom
 from app.services import wecom_api
+from app.services.contact_resolver import resolve_names
 
 router = APIRouter()
 
@@ -87,6 +88,23 @@ def quit_list():
     except wecom_api.WeComAPIError as e:
         raise HTTPException(400, f"errcode={e.errcode} {e.errmsg}")
     return {"ok": True, "count": d["count"], "ids": d["ids"]}
+
+
+@router.get("/external-contacts", summary="批量解析外部联系人姓名（externalcontact/get 缓存）")
+def external_contacts(ids: str = "", db: Session = Depends(get_db)):
+    """把一批 userid 中的外部联系人（wo/wm 开头）解析为可读姓名。
+
+    返回 {"ok": true, "names": {userid: name}}。非外部 id / 解析失败的不在 names 里，
+    调用方保留原始 id 展示即可。结果写入 external_contact 缓存表（随本请求事务提交）。
+    """
+    id_list = [x.strip() for x in ids.split(",") if x.strip()]
+    names = resolve_names(db, id_list)
+    try:
+        db.commit()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("external-contacts 缓存提交失败：%s", e)
+        db.rollback()
+    return {"ok": True, "names": names}
 
 
 @router.get("/external-groupchat/{room_id}", summary="拉取外部群(客户群)信息并写回群档案")

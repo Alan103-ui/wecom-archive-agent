@@ -305,6 +305,26 @@ class ChatRoom(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
 
+class ExternalContact(Base):
+    """外部联系人（客户）姓名缓存，由 externalcontact/get 解析回填。
+
+    会话存档里发送方/群成员中的 external_userid（wo/wm 开头）本身不可读，
+    通过本表缓存「企微客户联系」解析出的姓名，避免每次展示都打企微 API。
+    """
+
+    __tablename__ = "external_contact"
+
+    external_userid: Mapped[str] = mapped_column(String(128), primary_key=True)
+    # 本企业对外部联系人的备注名 / 微信昵称
+    name: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    avatar: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    corp_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    type: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gender: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    raw_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
 class WeComConfig(Base):
     """企业微信接口配置（单行，id 固定为 1）。
 

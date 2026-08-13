@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-12-1';
+const APP_JS_VERSION = '2026-08-13-1';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -86,6 +86,33 @@ function roomName(rid) {
   if (!rid) return '(单聊)';
   if (_roomNameMap && _roomNameMap.has(rid)) return _roomNameMap.get(rid);
   return rid;
+}
+
+/* ---------------- 外部联系人姓名解析（wo/wm 开头），mirror roomName ----------------
+   后端 /api/wecom/external-contacts 按 id 批量解析（externalcontact/get + 缓存），
+   前端懒加载：先按原始 id 展示，解析到位后二次渲染替换。 */
+let _contactMap = null;
+let _contactLoading = null;
+function contactName(uid) {
+  if (!uid) return uid;
+  if (_contactMap && _contactMap.has(uid)) return _contactMap.get(uid);
+  return uid;
+}
+async function ensureContacts(ids) {
+  const ext = [...new Set((ids || []).filter((id) => id && (id.startsWith('wo') || id.startsWith('wm'))))];
+  const miss = ext.filter((id) => !(_contactMap && _contactMap.has(id)));
+  if (!miss.length) return;
+  if (_contactLoading) return _contactLoading;
+  const params = encodeURIComponent(miss.join(','));
+  _contactLoading = req('/wecom/external-contacts?ids=' + params)
+    .then((d) => {
+      const names = (d && d.names) || {};
+      if (!_contactMap) _contactMap = new Map();
+      Object.entries(names).forEach(([k, v]) => _contactMap.set(k, v));
+    })
+    .catch(() => { /* 解析失败不影响展示，保留原始 id */ })
+    .finally(() => { _contactLoading = null; });
+  return _contactLoading;
 }
 
 /* ---------------- 风险相关枚举与路由聚合（前端，依据后端规则数据推导） ---------------- */
@@ -304,6 +331,7 @@ window.openRoom = async function (roomId) {
     req('/risks/rules').catch(() => []),
   ]);
   const room = rooms.find((r) => r.room_id === roomId) || { room_id: roomId };
+  await ensureContacts([room.owner]);
   const applicable = rules.filter((rl) => ruleAppliesToRoom(rl, roomId));
   const lset = new Set();
   applicable.forEach((rl) => layersOf(rl).forEach((l) => lset.add(l)));
@@ -315,7 +343,7 @@ window.openRoom = async function (roomId) {
     <div class="kv">
       <span class="k">群ID</span><span class="v">${esc(room.room_id)}</span>
       <span class="k">备注名</span><span class="v">${esc(room.name || '-')}</span>
-      <span class="k">群主</span><span class="v">${esc(room.owner || '-')}</span>
+      <span class="k">群主</span><span class="v">${esc(contactName(room.owner) || '-')}</span>
       <span class="k">成员数</span><span class="v">${(room.members && room.members.length) || room.member_count || 0}</span>
       <span class="k">采集</span><span class="v">${room.enabled ? '<span class="tag tag-done">开</span>' : '<span class="tag tag-skipped">关</span>'}</span>
       <span class="k">消息/附件</span><span class="v">${room.msg_count || 0} / ${room.attachment_count || 0}</span>
@@ -694,23 +722,37 @@ async function loadMessages(page = 1) {
     }));
     tbody.innerHTML = d.items.length ? d.items.map((m) => `<tr>
         <td>${m.seq}</td><td>${fmtTime(m.msg_time)}</td>
-        <td>${esc(m.from_name || m.from_id)}</td><td>${esc(roomName(m.room_id))}</td><td>${esc(m.msg_type)}</td>
+        <td>${esc(m.from_name || contactName(m.from_id))}</td><td>${esc(roomName(m.room_id))}</td><td>${esc(m.msg_type)}</td>
         <td class="wrap">${esc((m.content_text || '').slice(0, 120))}</td>
         <td>${m.attachment_count ? `<button class="btn btn-sm" onclick="showMessage('${m.id}')">${m.attachment_count} 个</button>` : '-'} <button class="btn btn-sm btn-warn" onclick="delMessage('${m.id}')">删除</button></td>
       </tr>`).join('')
       : '<tr><td colspan="7" class="empty">暂无消息</td></tr>';
     renderPager('#msgPager', d.total, page, 20, loadMessages);
+    // 外部联系人姓名懒解析：解析到位后二次渲染替换原始 id
+    if (d.items.length) {
+      const fromIds = d.items.map((m) => m.from_id);
+      ensureContacts(fromIds).then(() => {
+        tbody.querySelectorAll('tr').forEach((tr, i) => {
+          const m = d.items[i];
+          if (m && _contactMap && _contactMap.has(m.from_id)) {
+            const td = tr.children[2];
+            if (td) td.textContent = m.from_name || _contactMap.get(m.from_id);
+          }
+        });
+      });
+    }
   } catch (e) { tbody.innerHTML = `<tr><td colspan="7" class="empty">加载失败：${esc(e.message)}</td></tr>`; }
 }
 
 window.showMessage = async function (id) {
   const m = await req('/messages/' + id).catch((e) => { toast(e.message, 'err'); return null; });
   if (!m) return;
+  await ensureContacts([m.from_id]);
   openDrawer('消息详情', `
     <div class="kv">
       <span class="k">seq / msgid</span><span class="v">${m.seq} / ${esc(m.msgid)}</span>
       <span class="k">时间</span><span class="v">${fmtTime(m.msg_time)}</span>
-      <span class="k">发送人</span><span class="v">${esc(m.from_name || m.from_id)}</span>
+      <span class="k">发送人</span><span class="v">${esc(m.from_name || contactName(m.from_id))}</span>
       <span class="k">群</span><span class="v">${esc(m.room_id || '(单聊)')}</span>
       <span class="k">类型</span><span class="v">${esc(m.msg_type)}</span>
     </div>
@@ -1171,11 +1213,13 @@ $('#wcExternalGroup').onclick = async () => {
     const r = await req('/wecom/external-groupchat/' + encodeURIComponent(roomid) + '?customer_contact_secret=' + encodeURIComponent($('#wcCustomerSecret').value));
     msg.textContent = `✓ 已拉取外部群「${r.name || r.room_id}」(${r.member_count} 人)`;
     msg.style.color = '#16a34a';
+    // 解析成员 / 群主中的外部联系人姓名（wo/wm 开头），再渲染
+    await ensureContacts([...(r.members || []).map((m) => m.userid), r.owner]);
     const members = (r.members || []).map((m) =>
-      `<div class="dist-item"><span>${esc(m.userid || '-')}</span><span class="muted">${esc(m.type == 2 ? '外部联系人' : '企业成员')}</span></div>`
+      `<div class="dist-item"><span>${esc(contactName(m.userid) || m.userid || '-')}</span><span class="muted">${esc(m.type == 2 ? '外部联系人' : '企业成员')}</span></div>`
     ).join('') || '<div class="dist-item"><span>无成员</span></div>';
-    const admins = (r.admins || []).length ? `<div class="dist-item"><span class="muted">群管理员：${esc(r.admins.join(', '))}</span></div>` : '';
-    box.innerHTML = `<div class="dist-item"><span>群主：${esc(r.owner || '-')}</span></div>` + members + admins;
+    const admins = (r.admins || []).length ? `<div class="dist-item"><span class="muted">群管理员：${esc((r.admins || []).map((a) => contactName(a) || a).join(', '))}</span></div>` : '';
+    box.innerHTML = `<div class="dist-item"><span>群主：${esc(contactName(r.owner) || r.owner || '-')}</span></div>` + members + admins;
   } catch (e) {
     msg.textContent = '拉取失败：' + e.message;
     msg.style.color = '#dc2626';

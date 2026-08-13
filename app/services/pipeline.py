@@ -37,6 +37,7 @@ from app.models.entities import (
 )
 from app.services.extract import extractor, templates
 from app.services.extract.compare import EXTRACT_MODE_KEY, MODE_OCR_LLM, MODE_VISION
+from app.services.contact_resolver import resolve_names
 from app.services.llm.client import get_model_for_role
 from app.models.model_config import ROLE_EXTRACT_VISION
 from app.services.kv_store import get_setting
@@ -202,6 +203,16 @@ def _save_message(db: Session, nm: NormalizedMessage) -> int | None:
     )
     db.add(msg)
     db.flush()  # 拿到 msg.id
+
+    # 外部联系人（wo/wm 开头）解析姓名写入 from_name，便于直接可读展示。
+    # best-effort：解析失败 / 未配客户联系 secret 时 from_name 保持 None，
+    # 由前端 contactName() 懒解析兜底，不阻断入库主流程。
+    if nm.from_id and nm.from_id[:2] in ("wo", "wm"):
+        try:
+            names = resolve_names(db, [nm.from_id])
+            msg.from_name = names.get(nm.from_id)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("外部联系人姓名解析跳过 from_id=%s: %s", nm.from_id, e)
 
     for media in nm.medias:
         if media.media_type not in settings.MEDIA_DOWNLOAD_TYPES:

@@ -223,6 +223,42 @@ def get_external_group(
     }
 
 
+def get_external_contact(
+    external_userid: str,
+    customer_contact_secret: str | None = None,
+    corpid: str | None = None,
+    base_url: str | None = None,
+) -> dict:
+    """获取外部联系人（客户）详情（官方 externalcontact/get，doc 92109 / 93416）。
+
+    ⚠️ 与内部群（msgaudit/groupchat/get）、外部群（externalcontact/groupchat/get）一样，
+    外部联系人详情必须用「客户联系 secret」换取 access_token，而非会话内容存档 secret。
+
+    官方返回 {"external_contact": {"external_userid","name","avatar","corp_name",
+    "type","gender","unionid",...}}。其中 name 为本企业对该外部联系人的备注名/微信昵称，
+    用于把会话存档里 wo/wm 开头的 external_userid 解析成可读姓名。
+    返回 {"external_userid","name","avatar","corp_name","type","gender"}
+    """
+    secret = (customer_contact_secret or settings.WECOM_CUSTOMER_CONTACT_SECRET or "").strip()
+    if not secret:
+        raise WeComAPIError(
+            -3, "未配置客户联系 secret：在「企业微信接口」配置后，方可解析外部联系人姓名"
+        )
+    if not external_userid:
+        raise WeComAPIError(-101, "external_userid 不能为空")
+    d = _post("/cgi-bin/externalcontact/get", {"external_userid": external_userid},
+              corpid, secret, base_url)
+    info = d.get("external_contact") or {}
+    return {
+        "external_userid": info.get("external_userid", external_userid),
+        "name": info.get("name"),
+        "avatar": info.get("avatar"),
+        "corp_name": info.get("corp_name"),
+        "type": info.get("type"),
+        "gender": info.get("gender"),
+    }
+
+
 def transfer_conversation(
     handover_userid: str,
     takeover_userid: str,

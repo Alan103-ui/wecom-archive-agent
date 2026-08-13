@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>企业微信会话存档</title>
-<link rel="stylesheet" href="/static/style.css?v=39">
+<link rel="stylesheet" href="/static/style.css?v=40">
 </head>
 <body>
 
@@ -327,12 +327,12 @@
   <!-- ============ 配置 ============ -->
   <section class="view" id="view-config">
     <div class="subtabs">
-      <button class="subtab active" data-sub="cfg-wecom">企业微信</button>
+      <button class="subtab active" data-sub="cfg-wecom">企业微信接口</button>
       <button class="subtab" data-sub="cfg-templates">抽取模板</button>
       <button class="subtab" data-sub="cfg-models">模型配置</button>
       <button class="subtab" data-sub="cfg-extract-compare">抽取对比</button>
-      <button class="subtab" data-sub="cfg-system">系统</button>
-      <button class="subtab" data-sub="cfg-settings">系统设置</button>
+      <button class="subtab" data-sub="cfg-system">系统状态</button>
+      <button class="subtab" data-sub="cfg-settings">消息设置</button>
     </div>
 
     <div class="subview active" id="sub-cfg-wecom">
@@ -564,7 +564,7 @@
 
     <div class="subview" id="sub-cfg-settings">
       <div class="panel">
-        <h3>系统设置 · 标准化通知投递配置</h3>
+        <h3>消息设置 · 标准化通知投递配置</h3>
         <p class="hint">所有投递通道凭据在此统一配置，界面保存即生效、重启后依然有效（不再依赖 .env 文件）。</p>
       </div>
 
@@ -590,7 +590,7 @@
       <!-- 企微应用消息 -->
       <div class="panel">
         <div class="panel-head"><h3>👤 企业微信应用消息</h3><span class="badge" id="appState">检测中…</span></div>
-        <p class="hint">与企业微信 TAB 共享同一套凭证（corp_id / agent_id / agent_secret），此处为投递专用的快捷配置。</p>
+        <p class="hint">与企业微信接口 TAB 共享同一套凭证（corp_id / agent_id / agent_secret），此处为投递专用的快捷配置。</p>
         <div class="form-grid">
           <div class="form-row"><label>企业 ID (corp_id)</label><input id="appCorp" placeholder="企业微信后台「我的企业」处获取"></div>
           <div class="form-row"><label>应用 ID (agent_id)</label><input id="appAgent" placeholder="自建应用 AgentId"></div>
@@ -806,6 +806,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=38"></script>
+<script src="/static/app.js?v=40"></script>
 </body>
 </html>
