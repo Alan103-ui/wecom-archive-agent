@@ -418,6 +418,17 @@ def recognize(file_path: str | Path, force_vision: bool = False) -> OcrOutcome:
     return rapid
 
 
+def recognize_isolated(file_path, force_vision: bool = False):
+    """
+    隔离执行 OCR（经受管进程池）。RapidOCR 的 C 层崩溃只杀 worker，不杀 uvicorn。
+
+    延迟导入 pool 以避免与 pool 形成模块级循环依赖（pool 又 import 本模块）。
+    """
+    from app.services.ocr.pool import recognize_isolated as _ri
+
+    return _ri(str(file_path), force_vision=force_vision)
+
+
 def is_ocr_supported(ext: str | None) -> bool:
     if not ext:
         return False
@@ -427,21 +438,19 @@ def is_ocr_supported(ext: str | None) -> bool:
 
 
 def engine_status() -> dict:
-    """供 /health 展示"""
-    try:
-        _EngineHolder.get()
-        rapidocr_ok = True
-        rapidocr_err = None
-    except Exception as e:  # noqa: BLE001
-        rapidocr_ok = False
-        rapidocr_err = str(e)
-
+    """供 /health 展示。**刻意不在主进程加载 RapidOCR**——模型只在 OCR worker 进程内加载，
+    避免健康检查把 C 层风险引入 uvicorn 主进程。"""
     from app.services.kv_store import get_setting
+    from app.services.ocr import pool as ocr_pool
+
+    pool_info = ocr_pool.pool_status()
     vision_cfg = _get_vision_model()
     return {
-        "available": rapidocr_ok,
-        "engine": "rapidocr-onnxruntime",
-        "error": rapidocr_err,
+        # 池已配置且未损坏即视为可用；真正的模型加载发生在隔离的 worker 进程内
+        "available": bool(pool_info.get("pool_alive")) or not pool_info.get("broken", False),
+        "engine": "rapidocr-onnxruntime (managed pool)",
+        "error": None,
+        "pool": pool_info,
         "ocr_vision": {
             "enabled": bool(get_setting("OCR_VISION_ENABLED", settings.OCR_VISION_ENABLED)),
             "model_configured": vision_cfg is not None,

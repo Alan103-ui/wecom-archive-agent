@@ -381,7 +381,7 @@ def _process_one(db: Session, att: Attachment, stats: dict) -> None:
         att.ocr_status = "processing"
         db.commit()
 
-        outcome = ocr_engine.recognize(att.local_path)
+        outcome = ocr_engine.recognize_isolated(att.local_path)
 
         # 模板强制走视觉 OCR：命中 OCR_VISION_FORCE_TEMPLATES 的复杂版式（表格/手写）模板时，
         # 用视觉模型结果覆盖 RapidOCR（仅当视觉模型已配置且本次识别成功）。KV 优先，config 兜底。
@@ -395,7 +395,7 @@ def _process_one(db: Session, att: Attachment, stats: dict) -> None:
         ):
             tpl = templates.match_template(db, outcome.text, att.file_ext)
             if tpl is not None and tpl.name in _force_templates:
-                forced = ocr_engine.recognize(att.local_path, force_vision=True)
+                forced = ocr_engine.recognize_isolated(att.local_path, force_vision=True)
                 if forced.success:
                     outcome = forced
 
@@ -453,16 +453,43 @@ def _process_one(db: Session, att: Attachment, stats: dict) -> None:
         att.extract_status = "processing"
         db.commit()
 
-        # 实验开关：视觉模式用多模态模型直接看图抽取（模板仍按 OCR 文本路由）。
-        # 若模式为视觉但并未配置视觉模型，自动回退到 OCR 路线，避免生产抽取整体失败。
+        # 抽取路线：默认 OCR→文本LLM；显式「视觉模式」开关则直接图片直抽。
         vision_cfg_ok = get_model_for_role(ROLE_EXTRACT_VISION, fallback=False) is not None
-        use_vision = get_setting(EXTRACT_MODE_KEY, MODE_OCR_LLM) == MODE_VISION and vision_cfg_ok
-        if use_vision:
+        extract_mode = get_setting(EXTRACT_MODE_KEY, MODE_OCR_LLM)
+        method_used = "ocr"
+
+        if extract_mode == MODE_VISION and vision_cfg_ok:
             result = extractor.extract_vision(tpl, att.local_path)
+            method_used = "vision"
         else:
-            if get_setting(EXTRACT_MODE_KEY, MODE_OCR_LLM) == MODE_VISION and not vision_cfg_ok:
+            if extract_mode == MODE_VISION and not vision_cfg_ok:
                 logger.warning("抽取模式为视觉但无视觉模型，回退 OCR 路线：%s", att.file_name)
             result = extractor.extract(tpl, latest.text_content)
+
+            # 视觉兜底：默认 OCR 模式下，当 OCR 置信度偏低 / OCR 抽取失败 / 字段极少，
+            # 且已配置视觉模型时，自动改走「图片直抽」再抽一次，取更优结果覆盖。
+            # 这样手写体、严重模糊图（RapidOCR 看不清）也能抽到结构化字段。
+            if vision_cfg_ok and get_setting(
+                "VISION_EXTRACT_FALLBACK_ENABLED", settings.VISION_EXTRACT_FALLBACK_ENABLED
+            ):
+                fb_conf = float(get_setting(
+                    "VISION_EXTRACT_FALLBACK_CONF", settings.VISION_EXTRACT_FALLBACK_CONF
+                ))
+                ocr_conf = latest.avg_confidence
+                low_conf = ocr_conf is None or ocr_conf < fb_conf
+                ocr_failed = not result.success
+                ocr_few = result.success and sum(
+                    1 for v in (result.fields or {}).values() if v not in (None, "", [], {})
+                ) <= 1
+                if low_conf or ocr_failed or ocr_few:
+                    vis = extractor.extract_vision(tpl, att.local_path)
+                    if vis.success and (
+                        ocr_failed or ocr_few or (vis.confidence or 0) >= (result.confidence or 0)
+                    ):
+                        result = vis
+                        method_used = "vision"
+                        logger.info("视觉抽取兜底生效 %s（OCR 置信度=%s）", att.file_name, ocr_conf)
+
         msg = db.get(ChatMessage, att.message_id)
 
         db.add(
@@ -477,6 +504,7 @@ def _process_one(db: Session, att: Attachment, stats: dict) -> None:
                 fields_json=result.fields,
                 confidence=result.confidence,
                 model=result.model,
+                extract_method=method_used,
                 duration_ms=result.duration_ms,
                 error=result.error,
                 biz_time=msg.msg_time if msg else None,

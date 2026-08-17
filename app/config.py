@@ -86,6 +86,16 @@ class Settings(BaseSettings):
     # PDF 最多处理页数，防超大文件卡死
     OCR_PDF_MAX_PAGES: int = 20
 
+    # ---------------- OCR 受管进程池（崩溃隔离） ----------------
+    # 问题：RapidOCR 的 C 层（ONNXRuntime/PP-OCRv4）在畸形图上会静默段错误/OOM，
+    #       Python 的 try 无法捕获，会直接杀死宿主进程（uvicorn + 调度器 + 所有在途任务）。
+    # 方案：OCR 在独立 worker 进程中执行。worker 内 RapidOCR 仅加载一次（热复用），
+    #       即使某 worker 因段错误退出，主进程（uvicorn）不受影响，且池自动重建 worker。
+    #       池创建/执行失败则降级为进程内执行，保留功能（此时无隔离，仅兜底）。
+    OCR_POOL_WORKERS: int = 2
+    # 单张 OCR 任务超时（秒），超时降级为进程内执行
+    OCR_POOL_TIMEOUT: int = 180
+
     # ---------------- OCR 视觉升级（混合识别） ----------------
     # 默认仍走 RapidOCR（快/免费/确定/有坐标）。
     # 仅当 RapidOCR 置信度低于阈值、或模板显式要求时，才调用视觉模型二次识别，
@@ -96,6 +106,13 @@ class Settings(BaseSettings):
     # 这些模板名一旦命中，强制走视觉模型 OCR（用于表格/手写等复杂版式）。
     # 留空表示仅按置信度阈值自动升级。
     OCR_VISION_FORCE_TEMPLATES: list[str] = []
+
+    # ---------------- 结构化抽取·视觉兜底 ----------------
+    # 默认走 OCR→文本LLM 路线；当 OCR 平均置信度低于阈值、或 OCR 抽取失败/字段极少，
+    # 且已配置「视觉抽取(多模态)」模型时，自动改走「图片直抽」作为兜底，取更优结果。
+    # 这样手写体/严重模糊图（RapidOCR 看不清）也能抽到结构化字段。
+    VISION_EXTRACT_FALLBACK_ENABLED: bool = True
+    VISION_EXTRACT_FALLBACK_CONF: float = 0.85
 
     # ---------------- LLM 结构化抽取 ----------------
     EXTRACT_ENABLED: bool = True
