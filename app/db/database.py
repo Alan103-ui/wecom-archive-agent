@@ -93,6 +93,13 @@ def _migrate_sqlite() -> None:
         if "scenario" not in tcols:
             cur.execute("ALTER TABLE extract_template ADD COLUMN scenario TEXT")
             conn.commit()
+
+        # extracted_record 新增抽取路线标记列（ocr / vision）
+        cur.execute("PRAGMA table_info(extracted_record)")
+        rcols = {r[1] for r in cur.fetchall()}
+        if "extract_method" not in rcols:
+            cur.execute("ALTER TABLE extracted_record ADD COLUMN extract_method TEXT")
+            conn.commit()
     finally:
         conn.close()
 

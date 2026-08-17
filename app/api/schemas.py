@@ -123,6 +123,8 @@ class RecordOut(BaseModel):
     fields_json: dict | None = None
     confidence: float | None = None
     model: str | None = None
+    # 抽取路线：ocr（OCR 文本→文本 LLM）/ vision（多模态直抽兜底）
+    extract_method: str | None = None
     duration_ms: int = 0
     error: str | None = None
     reviewed: bool = False
