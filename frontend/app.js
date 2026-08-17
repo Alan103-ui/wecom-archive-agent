@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-13-2';
+const APP_JS_VERSION = '2026-08-17-1';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -773,7 +773,7 @@ $('#attResetFailed').onclick = async () => {
 /* ================ 消息 ================ */
 async function loadMessages(page = 1) {
   const tbody = $('#msgTable').querySelector('tbody');
-  tbody.innerHTML = '<tr><td colspan="7" class="empty">加载中…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" class="empty">加载中…</td></tr>';
   try {
     await getRoomNameMap();
     const d = await req('/messages?' + qs({
@@ -781,14 +781,16 @@ async function loadMessages(page = 1) {
       msg_type: $('#msgType').value,
       has_attachment: $('#msgHasAtt').checked ? 'true' : '',
     }));
-    tbody.innerHTML = d.items.length ? d.items.map((m) => `<tr>
+    tbody.innerHTML = d.items.length ? d.items.map((m) => `<tr data-id="${esc(m.id)}">
         <td>${m.seq}</td><td>${fmtTime(m.msg_time)}</td>
         <td>${esc(m.from_name || contactName(m.from_id))}</td><td>${esc(roomName(m.room_id))}</td><td>${esc(m.msg_type)}</td>
         <td class="wrap">${esc((m.content_text || '').slice(0, 120))}</td>
-        <td>${m.attachment_count ? `<button class="btn btn-sm" onclick="showMessage('${m.id}')">${m.attachment_count} 个</button>` : '-'} <button class="btn btn-sm btn-warn" onclick="delMessage('${m.id}')">删除</button></td>
+        <td>${m.attachment_count ? `<button class="btn btn-sm" onclick="showMessage('${m.id}')">${m.attachment_count} 个</button>` : '-'}</td>
+        <td class="sel-col"><input type="checkbox" class="msg-row-cb" value="${esc(m.id)}"></td>
       </tr>`).join('')
-      : '<tr><td colspan="7" class="empty">暂无消息</td></tr>';
+      : '<tr><td colspan="8" class="empty">暂无消息</td></tr>';
     renderPager('#msgPager', d.total, page, 20, loadMessages);
+    updateMsgSelectAllState();
     // 外部联系人姓名懒解析：解析到位后二次渲染替换原始 id
     if (d.items.length) {
       const fromIds = d.items.map((m) => m.from_id);
@@ -802,8 +804,31 @@ async function loadMessages(page = 1) {
         });
       });
     }
-  } catch (e) { tbody.innerHTML = `<tr><td colspan="7" class="empty">加载失败：${esc(e.message)}</td></tr>`; }
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="8" class="empty">加载失败：${esc(e.message)}</td></tr>`; }
 }
+
+function updateMsgSelectAllState() {
+  const cbs = [...document.querySelectorAll('.msg-row-cb')];
+  const checked = cbs.filter((cb) => cb.checked);
+  const all = cbs.length > 0 && checked.length === cbs.length;
+  const sa = $('#msgSelectAll');
+  if (sa) { sa.checked = all; sa.indeterminate = checked.length > 0 && !all; }
+  const btn = $('#msgBatchDel');
+  if (btn) btn.disabled = checked.length === 0;
+}
+
+window.deleteSelectedMessages = async () => {
+  const ids = [...document.querySelectorAll('.msg-row-cb:checked')].map((cb) => cb.value).filter(Boolean);
+  if (!ids.length) return;
+  if (!confirm(`确认删除选中的 ${ids.length} 条消息？其附件一并删除，风险事件保留（解除关联），不可恢复！`)) return;
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    try { await req('/messages/' + id, { method: 'DELETE' }); ok++; }
+    catch (e) { fail++; console.error('删除消息失败', id, e); }
+  }
+  toast(`删除完成：成功 ${ok} 条${fail ? '，失败 ' + fail + ' 条' : ''}`, fail ? 'warn' : 'ok');
+  loadMessages(1);
+};
 
 window.showMessage = async function (id) {
   const m = await req('/messages/' + id).catch((e) => { toast(e.message, 'err'); return null; });
@@ -829,6 +854,14 @@ window.showMessage = async function (id) {
 
 $('#msgSearch').onclick = () => loadMessages(1);
 $('#msgKeyword').onkeydown = (e) => { if (e.key === 'Enter') loadMessages(1); };
+$('#msgBatchDel').onclick = () => deleteSelectedMessages();
+$('#msgSelectAll').addEventListener('change', (e) => {
+  document.querySelectorAll('.msg-row-cb').forEach((cb) => { cb.checked = e.target.checked; });
+  updateMsgSelectAllState();
+});
+$('#msgTable').querySelector('tbody').addEventListener('change', (e) => {
+  if (e.target && e.target.classList.contains('msg-row-cb')) updateMsgSelectAllState();
+});
 
 /* ================ 模板 ================ */
 let editingTplId = null;

@@ -107,6 +107,9 @@ th{
 }
 tbody tr:hover{background:#1b212a}
 td.wrap{white-space:normal;max-width:420px;word-break:break-all}
+.sel-col{width:40px;text-align:center;vertical-align:middle}
+.sel-col input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--accent)}
+tr.selected td{background:rgba(56,189,248,.10)}
 .empty{padding:40px;text-align:center;color:var(--muted)}
 
 /* ---------- 状态徽标 ---------- */

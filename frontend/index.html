@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>企业微信会话存档</title>
-<link rel="stylesheet" href="/static/style.css?v=41">
+<link rel="stylesheet" href="/static/style.css?v=42">
 </head>
 <body>
 
@@ -327,10 +327,11 @@
         </select>
         <label class="chk"><input type="checkbox" id="msgHasAtt"> 仅带附件</label>
         <button class="btn btn-primary" id="msgSearch">查询</button>
+        <button class="btn btn-warn" id="msgBatchDel" disabled>删除选中</button>
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="msgTable">
-          <thead><tr><th>seq</th><th>时间</th><th>发送人</th><th>群名称</th><th>类型</th><th>内容</th><th>附件</th></tr></thead>
+          <thead><tr><th>seq</th><th>时间</th><th>发送人</th><th>群名称</th><th>类型</th><th>内容</th><th>附件</th><th class="sel-col"><input type="checkbox" id="msgSelectAll" title="全选"></th></tr></thead>
           <tbody></tbody>
         </table></div>
         <div class="pager" id="msgPager"></div>
@@ -820,6 +821,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/static/app.js?v=41"></script>
+<script src="/static/app.js?v=42"></script>
 </body>
 </html>
