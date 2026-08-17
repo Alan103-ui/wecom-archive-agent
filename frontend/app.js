@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-17-2';
+const APP_JS_VERSION = '2026-08-17-3';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -599,6 +599,7 @@ async function initRecords() {
   loadRecords(1);
 }
 
+const STYLE_LABEL = { table: '表格', card: '卡片', list: '列表', mixed: '混合' };
 async function loadRecords(page = 1) {
   recPage = page;
   const tplName = $('#recTemplate').value;
@@ -657,21 +658,86 @@ window.showRecord = async function (id) {
   const schema = (r.fields_schema || []).filter((f) => f && f.key);
   const schemaKeys = new Set(schema.map((f) => f.key));
   const labelOf = {};
-  schema.forEach((f) => { labelOf[f.key] = f.label || f.key; });
+  const typeOf = {};
+  schema.forEach((f) => { labelOf[f.key] = f.label || f.key; typeOf[f.key] = f.type || 'string'; });
   // 模板未定义、但实际抽到的额外字段也保留展示
   const extraKeys = Object.keys(fields).filter((k) => !schemaKeys.has(k));
   const allKeys = schema.map((f) => f.key).concat(extraKeys);
-  const rows = allKeys.map((k) => {
+  const isArr = (v) => Array.isArray(v);
+  const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+
+  // 标量字段的可编辑输入框
+  function scalarInput(k) {
     const v = fields[k];
     const missing = v === undefined || v === null;
-    const val = missing ? '' : (typeof v === 'object' ? JSON.stringify(v) : String(v));
-    return `<tr><td style="color:var(--muted)">${esc(labelOf[k] || k)}</td>
-      <td><input data-fk="${esc(k)}" value="${esc(val)}"${missing ? ' placeholder="（未抽取）"' : ''}></td></tr>`;
-  }).join('');
+    const val = missing ? '' : (isObj(v) || isArr(v) ? JSON.stringify(v) : String(v));
+    return `<input class="fv" data-fk="${esc(k)}" value="${esc(val)}"${missing ? ' placeholder="（未抽取）"' : ''}>`;
+  }
+  // 数组/对象字段的「展示 + 编辑」块
+  function blockInput(k) {
+    const v = fields[k];
+    if (v === undefined || v === null) return `<textarea class="fv-array" data-fk="${esc(k)}" placeholder="（未抽取）"></textarea>`;
+    const json = typeof v === 'string' ? v : JSON.stringify(v, null);
+    return `<details class="array-edit"><summary>查看/编辑 JSON</summary><textarea class="fv-array" data-fk="${esc(k)}">${esc(json)}</textarea></details>`;
+  }
+  function renderArrayTable(arr) {
+    if (!Array.isArray(arr) || !arr.length) return '<div class="muted">（空）</div>';
+    if (typeof arr[0] !== 'object' || arr[0] === null) {
+      return '<ul class="arr-list">' + arr.map((x) => `<li>${esc(String(x))}</li>`).join('') + '</ul>';
+    }
+    const keys = Array.from(new Set(arr.flatMap((it) => Object.keys(it || {}))));
+    return `<table class="sub-table"><thead><tr>${keys.map((kk) => `<th>${esc(kk)}</th>`).join('')}</tr></thead><tbody>${
+      arr.map((it) => `<tr>${keys.map((kk) => `<td>${esc(it && it[kk] != null ? it[kk] : '')}</td>`).join('')}</tr>`).join('')
+    }</tbody></table>`;
+  }
+  function structDisplay(k) {
+    const v = fields[k];
+    if (isArr(v)) return renderArrayTable(v);
+    if (isObj(v)) return '<pre class="code">' + esc(JSON.stringify(v, null, 2)) + '</pre>';
+    return '';
+  }
+
+  // 按模板展示样式组装字段
+  const style = (r.display_style || 'card');
+  const scalarKeys = allKeys.filter((k) => typeOf[k] !== 'array' && typeOf[k] !== 'object');
+  const structKeys = allKeys.filter((k) => typeOf[k] === 'array' || typeOf[k] === 'object');
+
+  let bodyHtml = '';
+  if (style === 'table') {
+    const rows = allKeys.map((k) => {
+      const t = typeOf[k] || 'string';
+      if (t === 'array' || t === 'object') {
+        return `<tr><td class="fl">${esc(labelOf[k] || k)}</td><td class="fv-cell">${structDisplay(k)}${blockInput(k)}</td></tr>`;
+      }
+      return `<tr><td class="fl">${esc(labelOf[k] || k)}</td><td>${scalarInput(k)}</td></tr>`;
+    }).join('');
+    bodyHtml = `<table class="field-table"><tbody>${rows}</tbody></table>`;
+  } else if (style === 'list') {
+    const rows = allKeys.map((k) => {
+      const t = typeOf[k] || 'string';
+      if (t === 'array' || t === 'object') {
+        return `<div class="list-row"><div class="lr-label">${esc(labelOf[k] || k)}</div>${structDisplay(k)}${blockInput(k)}</div>`;
+      }
+      return `<div class="list-row"><div class="lr-label">${esc(labelOf[k] || k)}</div>${scalarInput(k)}</div>`;
+    }).join('');
+    bodyHtml = `<div class="field-list">${rows}</div>`;
+  } else if (style === 'mixed') {
+    const header = scalarKeys.map((k) => `<div class="card-cell"><div class="cc-label">${esc(labelOf[k] || k)}</div>${scalarInput(k)}</div>`).join('');
+    let struct = '';
+    structKeys.forEach((k) => { struct += `<h4 class="struct-title">${esc(labelOf[k] || k)}</h4>${structDisplay(k)}${blockInput(k)}`; });
+    bodyHtml = `<div class="card-grid">${header}</div>${struct}`;
+  } else { // card 默认
+    const cards = scalarKeys.map((k) => `<div class="card-cell"><div class="cc-label">${esc(labelOf[k] || k)}</div>${scalarInput(k)}</div>`).join('');
+    let struct = '';
+    structKeys.forEach((k) => { struct += `<div class="struct-block"><div class="sb-label">${esc(labelOf[k] || k)}</div>${structDisplay(k)}${blockInput(k)}</div>`; });
+    bodyHtml = `<div class="card-grid">${cards}</div>${struct}`;
+  }
 
   openDrawer('结构化记录详情', `
     <div class="kv">
       <span class="k">模板</span><span class="v">${esc(r.template_name || '-')}</span>
+      <span class="k">样式</span><span class="v"><span class="tag tag-style">${STYLE_LABEL[style] || esc(style)}</span></span>
+      <span class="k">场景</span><span class="v">${r.scenario ? `<span class="tag tag-scenario">${esc(r.scenario)}</span>` : '<span class="muted">-</span>'}</span>
       <span class="k">状态</span><span class="v">${tag(r.status)}</span>
       <span class="k">置信度</span><span class="v">${r.confidence != null ? (r.confidence * 100).toFixed(0) + '%' : '-'}</span>
       <span class="k">模型</span><span class="v">${esc(r.model || '-')}</span>
@@ -680,7 +746,7 @@ window.showRecord = async function (id) {
       ${r.error ? `<span class="k">错误</span><span class="v" style="color:#f87171">${esc(r.error)}</span>` : ''}
     </div>
     <h4>字段（可直接修改后保存，视为已复核）</h4>
-    <table class="field-table"><tbody>${rows || '<tr><td>无字段</td></tr>'}</tbody></table>
+    ${bodyHtml || '<div class="empty">无字段</div>'}
     <div class="row-btns">
       <button class="btn btn-primary btn-sm" id="drSaveRec">保存修正</button>
       ${r.attachment_id ? `<button class="btn btn-sm" onclick="showAttachment('${r.attachment_id}')">查看来源附件</button>` : ''}
@@ -691,7 +757,7 @@ window.showRecord = async function (id) {
   $('#drSaveRec').onclick = async () => {
     const patch = {};
     const origKeys = new Set(Object.keys(fields));
-    $$('#drawerBody input[data-fk]').forEach((inp) => {
+    $$('#drawerBody [data-fk]').forEach((inp) => {
       const fk = inp.dataset.fk;
       const raw = inp.value;
       // 未抽取且用户未填写的字段不写入，避免凭空注入大量 null

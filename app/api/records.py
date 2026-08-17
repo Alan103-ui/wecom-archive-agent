@@ -267,6 +267,8 @@ def get_record(record_id: str, db: Session = Depends(get_db)):
         tpl = db.get(ExtractTemplate, rec.template_id)
         if tpl is not None:
             schema = tpl.fields_schema
+            out.display_style = tpl.display_style
+            out.scenario = tpl.scenario
     out.fields_schema = schema
     return out
 

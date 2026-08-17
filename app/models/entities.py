@@ -216,6 +216,11 @@ class ExtractTemplate(Base):
     # 是否为兜底模板（都没命中时用它）
     is_fallback: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
+    # 展示样式：table / card / list / mixed，详情页据此渲染不同版式
+    display_style: Mapped[str] = mapped_column(String(16), default="card")
+    # 应用场景说明（如 财务对账 / 法务审查 / 仓库收货），用于分组与展示
+    scenario: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 

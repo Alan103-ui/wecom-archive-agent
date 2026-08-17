@@ -162,11 +162,98 @@ def _vision_recognize_text(image_b64: str, media_type: str, config) -> str:
     return vision_to_text(config, image_b64, OCR_VISION_PROMPT, image_media_type=media_type)
 
 
-def _run_image_rapidocr(path: Path) -> OcrOutcome:
-    """对单张图跑 RapidOCR，封装成 OcrOutcome。"""
+def _preprocess_for_ocr(np_img, upscale: bool = True):
+    """轻量预处理：灰度→按需放大→轻微锐化，提升小图/模糊图识别率。
+
+    返回 3 通道 (H,W,3) numpy 数组（RapidOCR 期望 3 通道），失败则原样返回。
+    """
+    try:
+        from PIL import Image, ImageFilter
+        import numpy as np
+    except Exception:  # noqa: BLE001
+        return np_img
+    try:
+        img = Image.fromarray(np_img).convert("L")
+        if upscale:
+            w, h = img.size
+            if max(w, h) < 1600:
+                scale = max(1.0, min(3.0, 1600.0 / max(w, h)))
+                img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        img = img.filter(ImageFilter.SHARPEN)
+        arr = np.array(img)
+        return np.stack([arr, arr, arr], axis=-1)
+    except Exception:  # noqa: BLE001
+        return np_img
+
+
+def _binarize_for_ocr(np_img):
+    """自适应二值化，用于低对比/脏背景的二次尝试。返回 3 通道 numpy 数组。"""
+    try:
+        from PIL import Image, ImageOps
+        import numpy as np
+        img = Image.fromarray(np_img).convert("L")
+        img = ImageOps.autocontrast(img)
+        arr = np.array(img)
+        try:
+            import cv2
+
+            _, bw = cv2.threshold(arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        except Exception:  # noqa: BLE001
+            mean = arr.mean()
+            bw = (arr > mean * 0.85).astype("uint8") * 255
+        bw = bw.astype("uint8")
+        return np.stack([bw, bw, bw], axis=-1)
+    except Exception:  # noqa: BLE001
+        return np_img
+
+
+# 原图 OCR 置信度高于此值即认为清晰，不再做预处理（避免给干净字引入噪点）
+PREPROC_TRIGGER_CONF = 0.85
+
+
+def _pick_better(a_blocks, a_avg, b_blocks, b_avg):
+    """返回 (blocks, avg)：在两组 OCR 结果中取质量更高的一份。"""
+    if not a_blocks:
+        return b_blocks, b_avg
+    if not b_blocks:
+        return a_blocks, a_avg
+    if a_avg is None:
+        return b_blocks, b_avg
+    if b_avg is None:
+        return a_blocks, a_avg
+    # 置信更高优先；置信相近（差<0.02）时取文本更长的一份
+    if b_avg > a_avg + 0.02 or (abs(b_avg - a_avg) <= 0.02 and len(b_blocks) > len(a_blocks)):
+        return b_blocks, b_avg
+    return a_blocks, a_avg
+
+
+def _run_image_rapidocr(path: Path, do_preprocess: bool = True) -> OcrOutcome:
+    """对单张图跑 RapidOCR，封装成 OcrOutcome。
+
+    条件预处理策略（基于测试数据优化）：
+      · 先对【原图】直接 OCR；
+      · 仅当原图结果为空、或平均置信度 < PREPROC_TRIGGER_CONF 时，
+        才做轻量预处理（放大+锐化）后二次 OCR，取质量更高的一份；
+      · 若二次结果仍为空/置信 < 0.6，再用自适应二值化第三次尝试。
+    这样既保留清晰图的原始高准确率，又对模糊/低对比/旋转图降级增强。
+    """
     t0 = time.time()
     try:
-        blocks, avg = _run_rapidocr(str(path))
+        import numpy as np
+        from PIL import Image
+
+        raw = np.array(Image.open(path).convert("RGB"))
+        blocks, avg = _run_rapidocr(raw)
+
+        if do_preprocess and (not blocks or (avg is not None and avg < PREPROC_TRIGGER_CONF)):
+            proc = _preprocess_for_ocr(raw)
+            b2, a2 = _run_rapidocr(proc)
+            blocks, avg = _pick_better(blocks, avg, b2, a2)
+            # 仍不佳则自适应二值化再试一次
+            if not blocks or (avg is not None and avg < 0.6):
+                bw = _binarize_for_ocr(proc)
+                b3, a3 = _run_rapidocr(bw)
+                blocks, avg = _pick_better(blocks, avg, b3, a3)
     except Exception as e:  # noqa: BLE001
         return OcrOutcome(success=False, error=f"OCR 执行失败：{e}", engine="rapidocr")
     return OcrOutcome(
@@ -253,7 +340,13 @@ def _ocr_pdf(path: Path) -> OcrOutcome:
         for i in range(pages):
             pix = doc.load_page(i).get_pixmap(matrix=mat)
             img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            blocks, avg = _run_rapidocr(np.array(img), page=i + 1)
+            raw_arr = np.array(img)
+            blocks, avg = _run_rapidocr(raw_arr, page=i + 1)
+            # 条件预处理：原图置信偏低才增强，避免给清晰扫描件引入噪点
+            if not blocks or (avg is not None and avg < PREPROC_TRIGGER_CONF):
+                proc = _preprocess_for_ocr(raw_arr)
+                b2, a2 = _run_rapidocr(proc, page=i + 1)
+                blocks, avg = _pick_better(blocks, avg, b2, a2)
             all_blocks.extend(blocks)
             if avg is not None:
                 all_scores.append(avg)

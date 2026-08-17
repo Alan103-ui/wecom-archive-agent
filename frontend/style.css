@@ -209,6 +209,29 @@ tr.selected td{background:rgba(56,189,248,.10)}
 .field-table th{position:static;background:transparent;padding:4px 6px}
 .field-table td{padding:4px 6px;border-bottom:1px solid var(--line)}
 .field-table input,.field-table select{width:100%;padding:5px 8px}
+/* 详情字段的 4 种展示样式 */
+.tag-style{background:var(--accent-soft);color:var(--accent)}
+.tag-scenario{background:rgba(168,85,247,.16);color:#c4b5fd}
+.field-table .fl{color:var(--muted);white-space:nowrap;width:1%;padding-right:12px}
+.field-table .fv-cell{vertical-align:top}
+.fv{width:100%;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg-soft);color:var(--text)}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:10px}
+.card-cell{border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:var(--bg-soft)}
+.card-cell .cc-label{font-size:11px;color:var(--muted);margin-bottom:4px}
+.field-list{display:flex;flex-direction:column}
+.list-row{display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
+.list-row .lr-label{width:130px;flex:none;color:var(--muted);font-size:13px;padding-top:4px}
+.list-row .fv,.list-row .array-edit,.list-row .sub-table,.list-row .code{flex:1;min-width:0}
+.struct-block{border:1px dashed var(--line);border-radius:9px;padding:10px;margin-bottom:10px}
+.struct-block .sb-label,.struct-title{font-size:13px;font-weight:600;margin:2px 0 6px;color:var(--text)}
+.struct-title{border-left:3px solid var(--accent);padding-left:8px;margin-top:12px}
+.sub-table{width:100%;border-collapse:collapse;font-size:12px;margin:4px 0}
+.sub-table th{background:var(--bg-soft);border:1px solid var(--line);padding:4px 6px;text-align:left;font-weight:600}
+.sub-table td{border:1px solid var(--line);padding:4px 6px}
+.arr-list{margin:4px 0;padding-left:18px}
+.array-edit{margin-top:4px}
+.array-edit summary{cursor:pointer;font-size:12px;color:var(--accent);user-select:none}
+.fv-array{width:100%;min-height:80px;margin-top:4px;font-family:var(--mono,monospace);font-size:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg-soft);color:var(--text);padding:6px}
 .row-btns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .inline-input{display:flex;gap:8px;align-items:center}
 .inline-input input{flex:1}

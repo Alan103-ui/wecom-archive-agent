@@ -116,6 +116,9 @@ class RecordOut(BaseModel):
     template_name: str | None = None
     # 模板定义的字段结构，用于详情页补全缺失字段（未抽取到的字段显示为空白行）
     fields_schema: list | None = None
+    # 模板的展示样式与应用场景，随详情一并返回
+    display_style: str | None = None
+    scenario: str | None = None
     status: str
     fields_json: dict | None = None
     confidence: float | None = None
@@ -158,6 +161,9 @@ class TemplateOut(BaseModel):
     fields_schema: list = Field(default_factory=list)
     prompt_extra: str | None = None
     is_fallback: bool = False
+    # 展示样式与应用场景（详情页据此渲染不同版式）
+    display_style: str = "card"
+    scenario: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -172,6 +178,8 @@ class TemplateCreate(BaseModel):
     fields_schema: list[FieldSpec] = Field(default_factory=list)
     prompt_extra: str | None = None
     is_fallback: bool = False
+    display_style: str = "card"
+    scenario: str | None = None
 
 
 class TemplateUpdate(BaseModel):
@@ -184,6 +192,8 @@ class TemplateUpdate(BaseModel):
     fields_schema: list[FieldSpec] | None = None
     prompt_extra: str | None = None
     is_fallback: bool | None = None
+    display_style: str | None = None
+    scenario: str | None = None
 
 
 class TemplateTryRun(BaseModel):

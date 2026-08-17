@@ -57,6 +57,16 @@ def _build_field_spec(fields_schema: list[dict]) -> str:
         line = f'  - "{key}"（{label}，类型 {ftype}）'
         if desc:
             line += f"：{desc}"
+        # 数组类型：若定义了 items 子结构，给出每个元素应含的字段
+        if ftype == "array" and f.get("items"):
+            subs = []
+            for it in f["items"]:
+                ik = it.get("key")
+                if not ik:
+                    continue
+                subs.append(f'{ik}({it.get("label", ik)}:{it.get("type", "string")})')
+            if subs:
+                line += "；每个元素为对象，含字段：" + " / ".join(subs)
         lines.append(line)
     return "\n".join(lines)
 
@@ -84,6 +94,9 @@ def _build_prompt(template: ExtractTemplate, ocr_text: str) -> str:
         '4. 金额、数量等数值类字段输出纯数字（不要带货币符号、单位、千分位逗号）。',
         '5. 日期统一格式化为 YYYY-MM-DD。',
         '6. "confidence" 是 0 到 1 之间的小数，表示你对本次抽取整体准确度的自评。',
+        '7. 类型为 array 的字段【必须】输出为 JSON 数组（即使只有一行也要用 [] 包裹），'
+        '数组元素是对象，对象字段严格按该字段说明中的"每个元素含字段"来组织；'
+        '绝对不要把多行内容合并成一个字符串。',
     ]
 
     if template.prompt_extra:
@@ -237,6 +250,9 @@ def _build_vision_prompt(template: ExtractTemplate) -> str:
         '4. 金额、数量等数值类字段输出纯数字（不要带货币符号、单位、千分位逗号）。',
         '5. 日期统一格式化为 YYYY-MM-DD。',
         '6. "confidence" 是 0 到 1 之间的小数，表示你对本次抽取整体准确度的自评。',
+        '7. 类型为 array 的字段【必须】输出为 JSON 数组（即使只有一行也要用 [] 包裹），'
+        '数组元素是对象，对象字段严格按该字段说明中的"每个元素含字段"来组织；'
+        '绝对不要把多行内容合并成一个字符串。',
     ]
 
     if template.prompt_extra:

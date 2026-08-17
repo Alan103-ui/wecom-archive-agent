@@ -83,6 +83,16 @@ def _migrate_sqlite() -> None:
         if "customer_contact_secret" not in wcols:
             cur.execute("ALTER TABLE wecom_config ADD COLUMN customer_contact_secret TEXT NOT NULL DEFAULT ''")
             conn.commit()
+
+        # extract_template 新增列（展示样式 / 应用场景）
+        cur.execute("PRAGMA table_info(extract_template)")
+        tcols = {r[1] for r in cur.fetchall()}
+        if "display_style" not in tcols:
+            cur.execute("ALTER TABLE extract_template ADD COLUMN display_style TEXT NOT NULL DEFAULT 'card'")
+            conn.commit()
+        if "scenario" not in tcols:
+            cur.execute("ALTER TABLE extract_template ADD COLUMN scenario TEXT")
+            conn.commit()
     finally:
         conn.close()
 
