@@ -33,9 +33,9 @@ def _filled(fields):
     return sum(1 for v in (fields or {}).values() if v not in (None, "", [], {}))
 
 
-def _extract_with_retry(tpl, text, max_tries=4):
+def _extract_with_retry(tpl, text, max_tries=6):
     """OCR→文本LLM 抽取，专治远程模型 429 限流：限流则指数退避重试，其他错误立即返回。"""
-    delays = [2, 4, 8, 15]
+    delays = [5, 10, 20, 35, 60, 90]
     last = None
     for i in range(max_tries):
         oc = extract(tpl, text)
@@ -74,6 +74,9 @@ def process_one(img_path: str) -> dict:
         if tpl is None:
             out["error"] = "no_template"
             return out
+        # 模板期望字段（schema 键），用于计算填充率
+        fs = tpl.fields_schema or []
+        out["schema_keys"] = [f.get("key") for f in fs]
 
         # 路线 A：OCR → 文本 LLM（429 限流时指数退避重试，规避远程模型偶发限流造成的误触发）
         oc, last_err = _extract_with_retry(tpl, ocr.text)
@@ -81,6 +84,9 @@ def process_one(img_path: str) -> dict:
         out["ocr_extract_conf"] = round(oc.confidence, 3) if (oc and oc.confidence is not None) else None
         out["ocr_filled"] = _filled(oc.fields) if oc else 0
         out["ocr_error"] = last_err
+        out["ocr_field_keys"] = sorted(
+            k for k, v in (oc.fields or {}).items() if v not in (None, "", [], {})
+        ) if oc else []
 
         # 视觉兜底判定（与 pipeline 同逻辑）
         fb_enabled = bool(getattr(settings, "VISION_EXTRACT_FALLBACK_ENABLED", True))
@@ -96,6 +102,9 @@ def process_one(img_path: str) -> dict:
             out["vision_ok"] = vis.success
             out["vision_conf"] = round(vis.confidence, 3) if vis.confidence is not None else None
             out["vision_filled"] = _filled(vis.fields)
+            out["vision_field_keys"] = sorted(
+                k for k, v in (vis.fields or {}).items() if v not in (None, "", [], {})
+            )
             adopt = vis.success and (ocr_failed or ocr_few or (vis.confidence or 0) >= (oc.confidence or 0))
             out["method"] = "vision" if adopt else "ocr"
             out["winner"] = "vision" if (adopt and out["vision_filled"] >= out["ocr_filled"]) else "ocr"
