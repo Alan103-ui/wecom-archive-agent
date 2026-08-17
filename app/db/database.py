@@ -100,6 +100,9 @@ def _migrate_sqlite() -> None:
         if "extract_method" not in rcols:
             cur.execute("ALTER TABLE extracted_record ADD COLUMN extract_method TEXT")
             conn.commit()
+        if "extract_warnings" not in rcols:
+            cur.execute("ALTER TABLE extracted_record ADD COLUMN extract_warnings TEXT")
+            conn.commit()
     finally:
         conn.close()
 

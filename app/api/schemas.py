@@ -125,6 +125,8 @@ class RecordOut(BaseModel):
     model: str | None = None
     # 抽取路线：ocr（OCR 文本→文本 LLM）/ vision（多模态直抽兜底）
     extract_method: str | None = None
+    # 抽取校验告警（行数缺失/金额不一致/置信度偏低等）
+    extract_warnings: list | None = None
     duration_ms: int = 0
     error: str | None = None
     reviewed: bool = False

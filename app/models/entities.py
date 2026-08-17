@@ -259,6 +259,8 @@ class ExtractedRecord(Base):
     model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # 抽取路线：ocr（OCR 文本→文本 LLM）/ vision（多模态直抽兜底）
     extract_method: Mapped[str | None] = mapped_column(String(16), nullable=True, default="ocr")
+    # 抽取校验告警（行数缺失/金额不一致/置信度偏低等），供前端标红提示人工复核
+    extract_warnings: Mapped[list] = mapped_column(JSON, default=list)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 

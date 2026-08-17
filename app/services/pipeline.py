@@ -505,6 +505,7 @@ def _process_one(db: Session, att: Attachment, stats: dict) -> None:
                 confidence=result.confidence,
                 model=result.model,
                 extract_method=method_used,
+                extract_warnings=result.warnings or [],
                 duration_ms=result.duration_ms,
                 error=result.error,
                 biz_time=msg.msg_time if msg else None,

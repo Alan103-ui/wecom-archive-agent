@@ -43,6 +43,7 @@ class ExtractOutcome:
     duration_ms: int = 0
     error: str | None = None
     template_name: str | None = None
+    warnings: list = field(default_factory=list)
 
 
 def _build_field_spec(fields_schema: list[dict]) -> str:
@@ -153,31 +154,27 @@ def _coerce(value: Any, ftype: str) -> Any:
     return value
 
 
-def extract(template: ExtractTemplate, ocr_text: str) -> ExtractOutcome:
-    """执行一次结构化抽取。不抛异常，错误封装在返回值里"""
-    if not settings.EXTRACT_ENABLED:
-        return ExtractOutcome(success=False, error="结构化抽取已在配置中关闭")
+def _call_with_retry(func, *args, **kwargs):
+    """调用模型，遇 429/限流 指数退避重试，其它错误立即抛出。"""
+    delays = [3, 8, 18, 35, 60]
+    last_err = None
+    for i in range(len(delays) + 1):
+        try:
+            return func(*args, **kwargs)
+        except LlmError as e:
+            msg = str(e)
+            if any(k in msg for k in ("429", "rate", "限流", "RateLimit", "Too Many", "exceed")) and i < len(delays):
+                time.sleep(delays[i])
+                last_err = e
+                continue
+            raise
+    if last_err:
+        raise last_err
+    raise LlmError("模型调用重试耗尽")
 
-    if not (ocr_text or "").strip():
-        return ExtractOutcome(
-            success=False, error="OCR 文本为空，跳过抽取", template_name=template.name
-        )
 
-    t0 = time.time()
-    prompt = _build_prompt(template, ocr_text)
-
-    try:
-        raw = chat_json(prompt, system=SYSTEM_PROMPT)
-    except LlmError as e:
-        return ExtractOutcome(
-            success=False,
-            error=str(e),
-            duration_ms=int((time.time() - t0) * 1000),
-            model=settings.OLLAMA_MODEL,
-            template_name=template.name,
-        )
-
-    # 模型可能直接返回 fields 内容而没有外层包装，两种都兼容
+def _parse_model_output(raw, schema, template_name):
+    """把模型原始输出归一化为 schema 字段字典；结构异常返回 (None, error, None)。"""
     if isinstance(raw, dict) and "fields" in raw and isinstance(raw["fields"], dict):
         fields_raw = raw["fields"]
         confidence = raw.get("confidence")
@@ -185,16 +182,8 @@ def extract(template: ExtractTemplate, ocr_text: str) -> ExtractOutcome:
         fields_raw = raw
         confidence = raw.pop("confidence", None) if "confidence" in raw else None
     else:
-        return ExtractOutcome(
-            success=False,
-            error=f"模型输出结构异常（期望对象，实际 {type(raw).__name__}）",
-            duration_ms=int((time.time() - t0) * 1000),
-            model=settings.OLLAMA_MODEL,
-            template_name=template.name,
-        )
+        return None, f"模型输出结构异常（期望对象，实际 {type(raw).__name__}）", None
 
-    # 按 schema 归一化，并剔除模型自造的多余键
-    schema = template.fields_schema or []
     normalized: dict[str, Any] = {}
     for f in schema:
         key = f.get("key")
@@ -208,19 +197,208 @@ def extract(template: ExtractTemplate, ocr_text: str) -> ExtractOutcome:
             conf = max(0.0, min(1.0, conf))
     except (TypeError, ValueError):
         conf = None
+    return normalized, None, conf
 
-    filled = sum(1 for v in normalized.values() if v not in (None, "", [], {}))
-    logger.info(
-        "抽取完成 模板=%s 字段 %d/%d 置信度=%s 耗时=%dms",
-        template.name, filled, len(normalized), conf, int((time.time() - t0) * 1000),
-    )
 
+def _extract_single_text(template, text):
+    """对一段 OCR 文本做一次抽取，返回 (fields, error, confidence, model)。"""
+    prompt = _build_prompt(template, text)
+    try:
+        raw = _call_with_retry(chat_json, prompt, system=SYSTEM_PROMPT)
+    except LlmError as e:
+        return None, str(e), None, settings.OLLAMA_MODEL
+    fields, err, conf = _parse_model_output(raw, template.fields_schema or [], template.name)
+    if err:
+        return None, err, None, settings.OLLAMA_MODEL
+    return fields, None, conf, settings.OLLAMA_MODEL
+
+
+def _split_lines(lines, cap):
+    """按行贪心切块，保证不在行中断，单块不超过 cap 字符。"""
+    chunks, cur, n = [], [], 0
+    for ln in lines:
+        if n + len(ln) + 1 > cap and cur:
+            chunks.append(cur)
+            cur, n = [], 0
+        cur.append(ln)
+        n += len(ln) + 1
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def _find_total_field(schema):
+    for f in schema:
+        if f.get("type") != "number":
+            continue
+        k = (f.get("key") or "").lower()
+        lbl = f.get("label") or ""
+        if "total" in k or "合计" in lbl or "价税合计" in lbl or k in ("total", "total_amount", "grand_total"):
+            return f
+    return None
+
+
+def _find_line_amount_key(items):
+    if not items:
+        return None
+    for pref in ("amount", "金额", "price", "单价", "sum", "小计"):
+        for it in items:
+            k = (it.get("key") or "").lower()
+            if pref in k:
+                return it.get("key")
+    return None
+
+
+def _num(v):
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip()
+    for ch in ["￥", "¥", "$", ",", " ", "元", "吨", "个", "%"]:
+        s = s.replace(ch, "")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _validate_fields(template, fields):
+    """行数 + 金额一致性校验，返回告警字符串列表。"""
+    if not fields:
+        return []
+    warnings = []
+    schema = template.fields_schema or []
+    array_fields = [f for f in schema if f.get("type") == "array"]
+
+    # 1. 明细数组非空
+    for f in array_fields:
+        arr = fields.get(f.get("key"))
+        if not isinstance(arr, list) or len(arr) == 0:
+            warnings.append(f"未抽取到「{f.get('label', f.get('key'))}」明细行")
+
+    # 2. 金额一致性：各行明细金额之和 vs 合计字段
+    total_field = _find_total_field(schema)
+    if total_field:
+        total = _num(fields.get(total_field["key"]))
+        if total is not None:
+            for f in array_fields:
+                arr = fields.get(f.get("key"))
+                if not isinstance(arr, list) or not arr:
+                    continue
+                line_amt = _find_line_amount_key(f.get("items"))
+                if not line_amt:
+                    continue
+                s, ok = 0.0, 0
+                for row in arr:
+                    if not isinstance(row, dict):
+                        continue
+                    v = _num(row.get(line_amt))
+                    if v is None and "qty" in row and "price" in row:
+                        q, p = _num(row.get("qty")), _num(row.get("price"))
+                        if q is not None and p is not None:
+                            v = q * p
+                    if v is not None:
+                        s += v
+                        ok += 1
+                if ok:
+                    diff = (abs(s - total) / abs(total)) if total else 0
+                    if diff > 0.05:
+                        warnings.append(
+                            f"「{f.get('label')}」各行金额之和 {round(s, 2)} 与合计 "
+                            f"{round(total, 2)} 不一致（差异 {round(diff * 100, 1)}%）"
+                        )
+    return warnings
+
+
+def _extract_chunked(template, text):
+    """长文本分段抽取：每段抽全部字段，数组字段 append 合并、单值取首个非空。"""
+    lines = text.split("\n")
+    chunks = _split_lines(lines, MAX_TEXT_CHARS)
+    schema = template.fields_schema or []
+    array_keys = [f["key"] for f in schema if f.get("type") == "array"]
+
+    merged: dict[str, Any] = {}
+    warnings: list[str] = []
+    confs: list[float] = []
+    model = settings.OLLAMA_MODEL
+    any_ok = False
+    first_err = None
+
+    for i, ch in enumerate(chunks):
+        fields, err, conf, mdl = _extract_single_text(template, "\n".join(ch))
+        if err:
+            warnings.append(f"第{i + 1}段抽取失败：{err[:80]}")
+            if first_err is None:
+                first_err = err
+            continue
+        any_ok = True
+        if conf is not None:
+            confs.append(conf)
+        model = mdl
+        for k, v in fields.items():
+            if k in array_keys and isinstance(v, list):
+                merged.setdefault(k, []).extend(v)
+            else:
+                if k not in merged or merged.get(k) in (None, "", [], {}):
+                    merged[k] = v
+
+    if not any_ok:
+        return ExtractOutcome(
+            success=False, error=first_err or "分段抽取全部失败", template_name=template.name
+        )
+
+    conf = round(sum(confs) / len(confs), 3) if confs else None
+    warnings += _validate_fields(template, merged)
+    if conf is not None and conf < 0.6:
+        warnings.append(f"抽取置信度偏低（{round(conf * 100)}%），建议人工复核")
     return ExtractOutcome(
         success=True,
-        fields=normalized,
+        fields=merged,
         confidence=conf,
-        model=settings.OLLAMA_MODEL,
+        model=model,
+        warnings=warnings,
+        template_name=template.name,
+    )
+
+
+def extract(template: ExtractTemplate, ocr_text: str) -> ExtractOutcome:
+    """执行一次结构化抽取。长文本自动分段，不丢明细行。不抛异常。"""
+    if not settings.EXTRACT_ENABLED:
+        return ExtractOutcome(success=False, error="结构化抽取已在配置中关闭")
+
+    if not (ocr_text or "").strip():
+        return ExtractOutcome(
+            success=False, error="OCR 文本为空，跳过抽取", template_name=template.name
+        )
+
+    text = (ocr_text or "").strip()
+    if len(text) > MAX_TEXT_CHARS:
+        logger.info("OCR 文本超长(%d 字)，启用分段抽取", len(text))
+        return _extract_chunked(template, text)
+
+    t0 = time.time()
+    fields, err, conf, model = _extract_single_text(template, text)
+    if err:
+        return ExtractOutcome(
+            success=False, error=err, duration_ms=int((time.time() - t0) * 1000),
+            model=model, template_name=template.name,
+        )
+    warnings = _validate_fields(template, fields)
+    if conf is not None and conf < 0.6:
+        warnings.append(f"抽取置信度偏低（{round(conf * 100)}%），建议人工复核")
+    filled = sum(1 for v in fields.values() if v not in (None, "", [], {}))
+    logger.info(
+        "抽取完成 模板=%s 字段 %d/%d 置信度=%s 耗时=%dms",
+        template.name, filled, len(fields), conf, int((time.time() - t0) * 1000),
+    )
+    return ExtractOutcome(
+        success=True,
+        fields=fields,
+        confidence=conf,
+        model=model,
         duration_ms=int((time.time() - t0) * 1000),
+        warnings=warnings,
         template_name=template.name,
     )
 
@@ -318,7 +496,10 @@ def extract_vision(
 
     prompt = _build_vision_prompt(template)
     try:
-        raw = chat_json_vision(cfg, image_b64, prompt, system=VISION_SYSTEM_PROMPT, image_media_type=media_type)
+        raw = _call_with_retry(
+            chat_json_vision, cfg, image_b64, prompt,
+            system=VISION_SYSTEM_PROMPT, image_media_type=media_type,
+        )
     except LlmError as e:
         return ExtractOutcome(
             success=False, error=str(e), duration_ms=int((time.time() - t0) * 1000),
@@ -355,11 +536,15 @@ def extract_vision(
     except (TypeError, ValueError):
         conf = None
 
+    warnings = _validate_fields(template, normalized)
+    if conf is not None and conf < 0.6:
+        warnings.append(f"抽取置信度偏低（{round(conf * 100)}%），建议人工复核")
     return ExtractOutcome(
         success=True,
         fields=normalized,
         confidence=conf,
         model=cfg.model,
         duration_ms=int((time.time() - t0) * 1000),
+        warnings=warnings,
         template_name=template.name,
     )

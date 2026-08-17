@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-17-4';
+const APP_JS_VERSION = '2026-08-17-5';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -746,6 +746,11 @@ window.showRecord = async function (id) {
       <span class="k">业务时间</span><span class="v">${fmtTime(r.biz_time)}</span>
       ${r.error ? `<span class="k">错误</span><span class="v" style="color:#f87171">${esc(r.error)}</span>` : ''}
     </div>
+    ${r.extract_warnings && r.extract_warnings.length ? `
+    <div class="warn-box">
+      <div class="warn-title">⚠ 抽取校验提示（建议人工复核）</div>
+      <ul>${r.extract_warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>
+    </div>` : ''}
     <h4>字段（可直接修改后保存，视为已复核）</h4>
     ${bodyHtml || '<div class="empty">无字段</div>'}
     <div class="row-btns">
