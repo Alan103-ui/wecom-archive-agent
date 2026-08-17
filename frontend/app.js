@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-17-5';
+const APP_JS_VERSION = '2026-08-17-6';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -619,7 +619,7 @@ async function loadRecords(page = 1) {
       const d = await req('/records/flatten?' + qs({ template_name: tplName, page, page_size: 30 }));
       if (!d.rows.length) { wrap.innerHTML = '<div class="empty">暂无数据</div>'; $('#recPager').innerHTML = ''; return; }
       wrap.innerHTML = `<table><thead><tr>
-          <th>业务时间</th><th>群名称</th>${d.columns.map((c) => `<th>${esc(c.label)}</th>`).join('')}<th>置信度</th><th>操作</th>
+          <th>业务时间</th><th>群名称</th>${d.columns.map((c) => `<th>${esc(c.label)}</th>`).join('')}<th>抽取置信度</th><th>操作</th>
         </tr></thead><tbody>${
           d.rows.map((r) => `<tr>
             <td>${fmtTime(r.__biz_time)}</td><td>${esc(roomName(r.__room_id))}</td>
@@ -635,7 +635,7 @@ async function loadRecords(page = 1) {
       }));
       if (!d.items.length) { wrap.innerHTML = '<div class="empty">暂无数据</div>'; $('#recPager').innerHTML = ''; return; }
       wrap.innerHTML = `<table><thead><tr>
-          <th>业务时间</th><th>群名称</th><th>模板</th><th>状态</th><th>抽取字段</th><th>置信度</th><th>复核</th><th>操作</th>
+          <th>业务时间</th><th>群名称</th><th>模板</th><th>状态</th><th>抽取字段</th><th>抽取置信度</th><th>复核</th><th>操作</th>
         </tr></thead><tbody>${
           d.items.map((r) => `<tr>
             <td>${fmtTime(r.biz_time)}</td><td>${esc(roomName(r.room_id))}</td><td>${esc(r.template_name || '-')} ${r.extract_method === 'vision' ? '<span class="tag tag-vision" style="margin-left:4px">视觉</span>' : ''}</td>
@@ -740,7 +740,7 @@ window.showRecord = async function (id) {
       <span class="k">场景</span><span class="v">${r.scenario ? `<span class="tag tag-scenario">${esc(r.scenario)}</span>` : '<span class="muted">-</span>'}</span>
       <span class="k">抽取方式</span><span class="v">${r.extract_method === 'vision' ? '<span class="tag tag-vision">视觉直抽</span>' : '<span class="tag tag-ocr">OCR抽取</span>'}</span>
       <span class="k">状态</span><span class="v">${tag(r.status)}</span>
-      <span class="k">置信度</span><span class="v">${r.confidence != null ? (r.confidence * 100).toFixed(0) + '%' : '-'}</span>
+      <span class="k">抽取置信度</span><span class="v">${r.confidence != null ? (r.confidence * 100).toFixed(0) + '%' : '-'}</span>
       <span class="k">模型</span><span class="v">${esc(r.model || '-')}</span>
       <span class="k">耗时</span><span class="v">${r.duration_ms} ms</span>
       <span class="k">业务时间</span><span class="v">${fmtTime(r.biz_time)}</span>
@@ -841,7 +841,7 @@ window.showAttachment = async function (id) {
       <button class="btn btn-sm" onclick="retryStage('${id}','extract')">重跑抽取</button>
     </div>
     ${isImg && a.local_path ? `<h4>原图</h4><img src="${API}/attachments/${id}/file">` : ''}
-    <h4>OCR 文本 ${ocr ? `（${ocr.text_length} 字 · ${ocr.duration_ms}ms · 置信度 ${
+    <h4>OCR 文本 ${ocr ? `（${ocr.text_length} 字 · ${ocr.duration_ms}ms · OCR置信度 ${
       ocr.avg_confidence != null ? (ocr.avg_confidence * 100).toFixed(1) + '%' : '-'}）` : ''}</h4>
     <div class="ocr-text">${ocr ? esc(ocr.text_content || '(空)') : '尚无 OCR 结果'}</div>`);
 };
