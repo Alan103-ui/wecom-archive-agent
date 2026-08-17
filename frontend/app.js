@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-17-1';
+const APP_JS_VERSION = '2026-08-17-2';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -653,9 +653,21 @@ window.showRecord = async function (id) {
   const r = await req('/records/' + id).catch((e) => { toast(e.message, 'err'); return null; });
   if (!r) return;
   const fields = r.fields_json || {};
-  const rows = Object.entries(fields).map(([k, v]) => `
-    <tr><td style="color:var(--muted)">${esc(k)}</td>
-    <td><input data-fk="${esc(k)}" value="${esc(typeof v === 'object' ? JSON.stringify(v) : v ?? '')}"></td></tr>`).join('');
+  // 以模板字段结构为准：定义过的字段即使未抽取到也展示为空白行，避免整行缺失
+  const schema = (r.fields_schema || []).filter((f) => f && f.key);
+  const schemaKeys = new Set(schema.map((f) => f.key));
+  const labelOf = {};
+  schema.forEach((f) => { labelOf[f.key] = f.label || f.key; });
+  // 模板未定义、但实际抽到的额外字段也保留展示
+  const extraKeys = Object.keys(fields).filter((k) => !schemaKeys.has(k));
+  const allKeys = schema.map((f) => f.key).concat(extraKeys);
+  const rows = allKeys.map((k) => {
+    const v = fields[k];
+    const missing = v === undefined || v === null;
+    const val = missing ? '' : (typeof v === 'object' ? JSON.stringify(v) : String(v));
+    return `<tr><td style="color:var(--muted)">${esc(labelOf[k] || k)}</td>
+      <td><input data-fk="${esc(k)}" value="${esc(val)}"${missing ? ' placeholder="（未抽取）"' : ''}></td></tr>`;
+  }).join('');
 
   openDrawer('结构化记录详情', `
     <div class="kv">
@@ -678,10 +690,15 @@ window.showRecord = async function (id) {
 
   $('#drSaveRec').onclick = async () => {
     const patch = {};
+    const origKeys = new Set(Object.keys(fields));
     $$('#drawerBody input[data-fk]').forEach((inp) => {
-      let v = inp.value;
+      const fk = inp.dataset.fk;
+      const raw = inp.value;
+      // 未抽取且用户未填写的字段不写入，避免凭空注入大量 null
+      if (raw === '' && !origKeys.has(fk)) return;
+      let v = raw;
       try { if (/^[[{]/.test(v.trim())) v = JSON.parse(v); } catch (e) { /* 保留字符串原样 */ }
-      patch[inp.dataset.fk] = v === '' ? null : v;
+      patch[fk] = v === '' ? null : v;
     });
     try {
       await req('/records/' + id, { method: 'PATCH', body: JSON.stringify({ fields_json: patch, reviewed: true }) });

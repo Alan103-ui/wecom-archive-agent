@@ -260,7 +260,15 @@ def get_record(record_id: str, db: Session = Depends(get_db)):
     rec = db.get(ExtractedRecord, record_id)
     if rec is None:
         raise HTTPException(404, "记录不存在")
-    return RecordOut.model_validate(rec)
+    out = RecordOut.model_validate(rec)
+    # 附带模板字段结构：详情页对「未抽取到的字段」也展示为空白行，而非整行缺失
+    schema = None
+    if rec.template_id:
+        tpl = db.get(ExtractTemplate, rec.template_id)
+        if tpl is not None:
+            schema = tpl.fields_schema
+    out.fields_schema = schema
+    return out
 
 
 @router.patch("/records/{record_id}", response_model=RecordOut, summary="人工复核/修正字段")

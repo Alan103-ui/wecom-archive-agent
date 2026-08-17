@@ -114,6 +114,8 @@ class RecordOut(BaseModel):
     msgid: str | None = None
     template_id: str | None = None
     template_name: str | None = None
+    # 模板定义的字段结构，用于详情页补全缺失字段（未抽取到的字段显示为空白行）
+    fields_schema: list | None = None
     status: str
     fields_json: dict | None = None
     confidence: float | None = None
