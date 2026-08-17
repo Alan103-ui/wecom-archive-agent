@@ -203,14 +203,16 @@ def _parse_model_output(raw, schema, template_name):
 def _extract_single_text(template, text):
     """对一段 OCR 文本做一次抽取，返回 (fields, error, confidence, model)。"""
     prompt = _build_prompt(template, text)
+    cfg = get_model_for_role("extract")
+    model_name = cfg.model if cfg else (settings.OLLAMA_MODEL or "unknown")
     try:
         raw = _call_with_retry(chat_json, prompt, system=SYSTEM_PROMPT)
     except LlmError as e:
-        return None, str(e), None, settings.OLLAMA_MODEL
+        return None, str(e), None, model_name
     fields, err, conf = _parse_model_output(raw, template.fields_schema or [], template.name)
     if err:
-        return None, err, None, settings.OLLAMA_MODEL
-    return fields, None, conf, settings.OLLAMA_MODEL
+        return None, err, None, model_name
+    return fields, None, conf, model_name
 
 
 def _split_lines(lines, cap):
