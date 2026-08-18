@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-18-1';
+const APP_JS_VERSION = '2026-08-18-2';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -435,7 +435,7 @@ function svgTrend(daily) {
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${s}</svg>`;
 }
 
-function svgHBar(obj, colorMap) {
+function svgHBar(obj, colorMap, labelMap) {
   const entries = Object.entries(obj || {});
   if (!entries.length) return '<div class="empty" style="padding:16px">暂无数据</div>';
   const max = Math.max(1, ...entries.map(([, v]) => v));
@@ -446,7 +446,8 @@ function svgHBar(obj, colorMap) {
     const y = padT + i * rowH;
     const w = Math.max(2, (v / max) * barW);
     const color = (colorMap && (colorMap[k] || colorMap._)) || 'var(--accent)';
-    const label = k.length > 12 ? k.slice(0, 12) + '…' : k;
+    const raw = (labelMap && labelMap[k] != null) ? labelMap[k] : k;
+    const label = raw.length > 12 ? raw.slice(0, 12) + '…' : raw;
     s += `<text x="0" y="${y + rowH / 2 + 4}" font-size="11" fill="var(--text)">${esc(label)}</text>`;
     s += `<rect x="${labelW}" y="${y + 3}" width="${w.toFixed(1)}" height="${rowH - 9}" rx="3" fill="${color}"/>`;
     s += `<text x="${labelW + w + 6}" y="${y + rowH / 2 + 4}" font-size="11" fill="var(--muted)">${v}</text>`;
@@ -460,7 +461,7 @@ function renderRiskCharts(stats) {
   const sev = document.getElementById('sevChart');
   const cat = document.getElementById('catChart');
   if (trend) trend.innerHTML = svgTrend(stats.daily);
-  if (sev) sev.innerHTML = svgHBar(stats.by_severity, SEV_COLOR);
+  if (sev) sev.innerHTML = svgHBar(stats.by_severity, SEV_COLOR, SEV_LABEL);
   if (cat) {
     const top = Object.entries(stats.by_category || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
     cat.innerHTML = svgHBar(Object.fromEntries(top));
