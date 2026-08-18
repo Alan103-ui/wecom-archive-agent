@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import delete as sa_delete, func, select
+from sqlalchemy import delete as sa_delete, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.schemas import (
@@ -117,8 +117,12 @@ def delete_message(message_id: str, db: Session = Depends(get_db)):
     msg = db.get(ChatMessage, message_id)
     if msg is None:
         raise HTTPException(404, "消息不存在")
-    # 风险事件解除与本消息的关联（message_id 为 SET NULL 约束）
-    db.execute(sa_delete(RiskEvent).where(RiskEvent.message_id == message_id))
+    # 风险事件保留（message_id 置空，仍可按群追溯），不删除事件本身
+    db.execute(
+        update(RiskEvent)
+        .where(RiskEvent.message_id == message_id)
+        .values(message_id=None)
+    )
     db.delete(msg)
     db.commit()
     return {"deleted": message_id, "ok": True}

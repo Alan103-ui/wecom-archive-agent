@@ -23,8 +23,6 @@ from app.services.extract.llm import LlmError, chat_json, chat_json_vision, get_
 
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
-
 # 送进模型的 OCR 文本上限（字符）。num_ctx=8192 token，中文约 1.5 字/token
 MAX_TEXT_CHARS = 6000
 

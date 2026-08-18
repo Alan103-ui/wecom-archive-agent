@@ -659,6 +659,8 @@ def risk_scan(batch_size: int | None = None) -> dict:
 
         for m in msgs:
             stats["scanned"] += 1
+            msgid = m.msgid
+            msg_id = m.id
             try:
                 text = _assemble_text(db, m)
                 events = detect_and_store(db, m, text, rules)
@@ -666,9 +668,20 @@ def risk_scan(batch_size: int | None = None) -> dict:
                 stats["alerts"] += sum(1 for e in events if e.alert_status in ("sent", "partial"))
             except Exception as e:  # noqa: BLE001
                 stats["errors"].append(str(e)[:200])
-                logger.exception("风险扫描消息异常 msgid=%s：%s", m.msgid, e)
-            m.risk_scanned = True
-            db.commit()  # 增量提交：长任务即使被中断也不丢已完成的扫描进度
+                logger.exception("风险扫描消息异常 msgid=%s：%s", msgid, e)
+            # 标记已扫：用原生 UPDATE（匹配 0 行不会报错），避免消息在扫描期间被
+            # 并发删除导致 ORM 对象过期、commit 时触发 StaleDataError 使整个作业崩溃。
+            # 增量提交：长任务即使被中断也不丢已完成的扫描进度。
+            try:
+                db.execute(
+                    update(ChatMessage)
+                    .where(ChatMessage.id == msg_id)
+                    .values(risk_scanned=True)
+                )
+                db.commit()
+            except Exception as e:  # noqa: BLE001
+                db.rollback()
+                logger.warning("风险扫描标记已扫失败 msgid=%s：%s", msgid, e)
     finally:
         db.close()
 
