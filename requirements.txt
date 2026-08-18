@@ -8,7 +8,7 @@ sqlalchemy>=2.0
 pydantic>=2.6
 pydantic-settings>=2.2
 # 生产切 PostgreSQL 时启用（本地 SQLite 无需安装）
-# psycopg[binary]>=3.1
+psycopg[binary]>=3.1
 
 # ---- 企业微信会话存档解密 ----
 # encrypt_random_key 为 RSA-2048 / PKCS#1 v1.5 加密，需用企业私钥解密

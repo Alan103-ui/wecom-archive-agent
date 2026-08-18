@@ -1,0 +1,23 @@
+# wecom-archive-agent 私有化部署编排
+# 使用：docker compose up -d --build
+services:
+  wecom-archive:
+    image: wecom-archive-agent:latest
+    build: .
+    container_name: wecom-archive
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      # 数据目录持久化（SQLite/媒体/日志/许可证/密钥），升级不丢数据
+      - ./data:/app/data
+    restart: unless-stopped
+    # 如需 HTTPS 由反向代理（Nginx/Caddy）转发到 8002，无需在此暴露端口
+    # networks:
+    #   - proxy
+# networks:
+#   proxy:
+#     external: true
