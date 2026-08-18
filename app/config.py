@@ -197,6 +197,14 @@ class Settings(BaseSettings):
     # 安全审计日志（登录/改密/用户管理）写入路径
     AUDIT_LOG_PATH: str = str(BASE_DIR / "data" / "audit.log")
 
+    # ---------------- 合规与数据留存 ----------------
+    # 展示层敏感信息脱敏（手机号/身份证/银行卡/邮箱打码）。生产合规场景建议 true
+    DATA_MASK_ENABLED: bool = False
+    # 留存天数：超过 N 天的消息及其附件/抽取记录/风险事件自动清理。0 = 不清理
+    DATA_RETENTION_DAYS: int = 0
+    # 留存清理作业间隔（小时）
+    RETENTION_INTERVAL_HOURS: int = 24
+
     # ---------------- 授权 License（私有化年费） ----------------
     # 公钥随部署包分发，用于客户机验签；私钥仅厂商持有用于签发，不进仓库/不进部署包。
     LICENSE_PUBLIC_KEY_PATH: str = str(BASE_DIR / "app" / "services" / "license" / "license_public.pem")

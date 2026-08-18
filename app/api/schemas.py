@@ -11,9 +11,22 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.services.compliance import mask_if_enabled
 
 T = TypeVar("T")
+
+
+def _mask_value(v: Any) -> Any:
+    """递归脱敏：仅处理字符串，保留结构。"""
+    if isinstance(v, str):
+        return mask_if_enabled(v)
+    if isinstance(v, list):
+        return [_mask_value(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _mask_value(x) for k, x in v.items()}
+    return v
 
 
 class Page(BaseModel, Generic[T]):
@@ -52,6 +65,11 @@ class MessageOut(BaseModel):
     content_text: str | None = None
     attachment_count: int = 0
     created_at: datetime
+
+    @field_validator("content_text")
+    @classmethod
+    def _mask_content(cls, v: str | None) -> str | None:
+        return mask_if_enabled(v)
 
 
 class MessageDetail(MessageOut):
@@ -98,6 +116,11 @@ class OcrResultOut(BaseModel):
     error: str | None = None
     created_at: datetime
 
+    @field_validator("text_content")
+    @classmethod
+    def _mask_ocr_text(cls, v: str | None) -> str | None:
+        return mask_if_enabled(v)
+
 
 class OcrResultDetail(OcrResultOut):
     blocks_json: list | None = None
@@ -133,6 +156,11 @@ class RecordOut(BaseModel):
     review_note: str | None = None
     biz_time: datetime | None = None
     created_at: datetime
+
+    @field_validator("fields_json")
+    @classmethod
+    def _mask_fields(cls, v: dict | None) -> dict | None:
+        return _mask_value(v) if isinstance(v, dict) else v
 
 
 class RecordUpdate(BaseModel):

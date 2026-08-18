@@ -29,6 +29,7 @@ last_run: dict = {
     "pipeline": {"at": None, "ok": None, "stats": None, "error": None},
     "risk": {"at": None, "ok": None, "stats": None, "error": None},
     "timeout": {"at": None, "ok": None, "stats": None, "error": None},
+    "retention": {"at": None, "ok": None, "stats": None, "error": None},
 }
 
 
@@ -77,6 +78,25 @@ def timeout_job() -> None:
         _record("timeout", False, error=str(e)[:500])
 
 
+def retention_job() -> None:
+    """合规留存清理：超期消息/附件/记录/风险事件（DATA_RETENTION_DAYS>0 时生效）。"""
+    from app.db.database import SessionLocal
+    from app.services.compliance import purge_expired
+
+    db = SessionLocal()
+    try:
+        stats = purge_expired(db)
+        _record("retention", True, stats)
+        if any(stats.values()):
+            logger.info("留存清理完成：%s", stats)
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        logger.exception("留存清理失败：%s", e)
+        _record("retention", False, error=str(e)[:500])
+    finally:
+        db.close()
+
+
 def start_scheduler() -> BackgroundScheduler | None:
     global _scheduler
     if not settings.SCHEDULER_ENABLED:
@@ -120,6 +140,15 @@ def start_scheduler() -> BackgroundScheduler | None:
         name="超时回复提醒扫描",
         next_run_time=datetime.now(),
     )
+    if settings.DATA_RETENTION_DAYS > 0:
+        sch.add_job(
+            retention_job,
+            "interval",
+            hours=settings.RETENTION_INTERVAL_HOURS,
+            id="data_retention_purge",
+            name="数据留存期清理",
+            next_run_time=datetime.now(),
+        )
     sch.start()
     _scheduler = sch
     logger.info(
