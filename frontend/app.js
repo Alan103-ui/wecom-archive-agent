@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-18-2';
+const APP_JS_VERSION = '2026-08-18-3';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -536,7 +536,7 @@ async function loadRooms() {
   const cards = [
     { l: '监控群数', n: rooms.length, f: 'all' },
     { l: '采集中', n: rooms.filter((r) => r.enabled).length, f: 'enabled' },
-    { l: '风险事件', n: stats.risk_events || 0, f: 'risk-all' },
+    { l: '风险事件', n: stats.total || 0, f: 'risk-all' },
     { l: '待处置', n: stats.pending || 0, f: 'risk-pending' },
   ];
   $('#roomStatCards').innerHTML = cards.map(({ l, n, f }) =>
