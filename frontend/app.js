@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-18-6';
+const APP_JS_VERSION = '2026-08-18-7';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -2709,14 +2709,29 @@ async function loadOpsCenter() {
         <div><label>License</label><div>${licBadge} ${esc(lic.customer || '') || ''} <span class="muted">${lic.expire_at ? '到期 ' + esc(lic.expire_at) + '（剩 ' + esc(String(lic.days_left ?? '—')) + ' 天）' : ''}</span></div></div>
         <div><label>调度器</label><div>${sch.running ? '<span class="tag" style="background:#e8f5e9;color:#2e7d32">运行中</span>' : '<span class="tag tag-danger">未启动</span>'} <span class="muted">${esc(sch.summary || '')}</span></div></div>
       </div>
+      <div class="admin-bar" style="margin-top:16px"><h3>日志查看</h3></div>
+      <div class="row-btns" style="flex-wrap:wrap;gap:8px">
+        <select id="logSelect">
+          <option value="server.log">服务日志（当前启动）</option>
+          <option value="audit.log">审计日志（登录/改密/用户管理）</option>
+          <option value="server_run.log">运行日志（历史采集/OCR/抽取）</option>
+          <option value="ocr_run.log">OCR 日志</option>
+        </select>
+        <select id="logLines">
+          <option value="100">100 行</option>
+          <option value="500" selected>500 行</option>
+          <option value="1000">1000 行</option>
+        </select>
+        <button class="btn btn-sm" onclick="refreshLogView()">刷新</button>
+        <a class="btn btn-sm" id="logDownload" href="/api/system/logs/server.log" target="_blank">下载当前日志</a>
+      </div>
+      <pre id="logView" style="max-height:420px;overflow:auto;border:1px solid var(--border,#333);border-radius:8px;padding:10px;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;margin:8px 0">加载中…</pre>
       <div class="admin-bar" style="margin-top:16px"><h3>自助运维操作</h3></div>
       <div class="row-btns" style="flex-wrap:wrap;gap:8px">
-        <a class="btn btn-sm" href="/api/system/logs/server.log" target="_blank">下载服务日志</a>
-        <a class="btn btn-sm" href="/api/system/logs/audit.log" target="_blank">下载审计日志</a>
-        <a class="btn btn-sm" href="/api/system/logs/run.log" target="_blank">下载运行日志</a>
         <button class="btn btn-primary btn-sm" onclick="doBackup()">导出数据备份</button>
       </div>
       <div class="hint" style="margin-top:12px">备份为 data 目录完整打包（含 SQLite/媒体/配置），可离线保存；恢复时解压回 data/ 后重启容器。审计日志含登录/改密/用户管理事件，可用于合规存证。</div>`;
+    bindLogPanel();
   } catch (e) { el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
 }
 
@@ -2736,6 +2751,29 @@ window.doBackup = async () => {
     URL.revokeObjectURL(a.href);
     toast('备份已下载', 'ok');
   } catch (e) { toast('备份失败：' + e.message, 'err'); }
+};
+
+/* 日志界面化查看 */
+function bindLogPanel() {
+  const sel = $('#logSelect'), ln = $('#logLines');
+  if (!sel || !ln) return;
+  sel.onchange = refreshLogView;
+  ln.onchange = refreshLogView;
+  refreshLogView();
+}
+window.refreshLogView = async () => {
+  const name = $('#logSelect').value;
+  const lines = $('#logLines').value;
+  const view = $('#logView');
+  const dl = $('#logDownload');
+  if (dl) dl.href = '/api/system/logs/' + name;
+  if (!view) return;
+  view.textContent = '加载中…';
+  try {
+    const r = await req('/system/logs/' + name + '?as_json=true&lines=' + lines);
+    view.textContent = (r.lines && r.lines.length) ? r.lines.join('\n') : '（日志为空）';
+    view.scrollTop = view.scrollHeight;
+  } catch (e) { view.textContent = '加载失败：' + e.message; }
 };
 
 /* ================ 修改密码 ================ */

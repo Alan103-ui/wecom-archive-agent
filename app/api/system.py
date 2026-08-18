@@ -296,7 +296,7 @@ def _model_configs():
 
 
 # ---------------------------------------------------------------- 运维中心（私有化自助运维）
-_SAFE_LOG_FILES = {"server.log", "audit.log", "run.log"}
+_SAFE_LOG_FILES = {"server.log", "audit.log", "run.log", "server_run.log", "ocr_run.log"}
 
 
 def _data_dir() -> Path:
@@ -339,13 +339,25 @@ def version_info():
     }
 
 
-@router.get("/logs/{name}", summary="下载日志文件", dependencies=[Depends(require_perm("system", "view"))])
-def download_log(name: str):
+@router.get("/logs/{name}", summary="查看/下载日志文件", dependencies=[Depends(require_perm("system", "view"))])
+def get_log(
+    name: str,
+    as_json: bool = Query(False, description="true=返回最近 N 行 JSON（界面化查看）；false=文件下载"),
+    lines: int = Query(200, ge=1, le=5000, description="as_json=true 时返回的行数"),
+):
     if name not in _SAFE_LOG_FILES:
-        raise HTTPException(400, "不允许下载该文件")
+        raise HTTPException(400, "不允许读取该文件")
     p = _data_dir() / name
     if not p.exists():
         raise HTTPException(404, f"日志文件不存在：{name}")
+    if as_json:
+        from collections import deque
+
+        tail: deque[str] = deque(maxlen=lines)
+        with p.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                tail.append(line.rstrip("\n"))
+        return {"name": name, "total": len(tail), "lines": list(tail)}
     return FileResponse(p, filename=name, media_type="text/plain")
 
 
