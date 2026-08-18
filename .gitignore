@@ -34,3 +34,8 @@ idx_check.html
 # ---- 自动化运行时 / 调试脚本（非项目源码）----
 .workbuddy/automations/
 scripts/diag_*.js
+
+# ---- PyInstaller 构建产物（exe 体积大，不入库，本地 tools/dist 交付）----
+tools/build/
+tools/dist/
+
