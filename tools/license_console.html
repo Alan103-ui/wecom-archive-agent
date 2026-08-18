@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>License 签发台 · 企业微信会话存档（厂商工具）</title>
+<style>
+  :root { --bg:#f4f6fa; --card:#fff; --line:#e2e6ee; --text:#1f2430; --muted:#7a8294; --brand:#2f6bff; --ok:#16a34a; --err:#dc2626; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:"Microsoft YaHei",-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); padding:24px; }
+  .wrap { max-width:900px; margin:0 auto; }
+  header { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+  .logo { width:42px; height:42px; border-radius:10px; background:var(--brand); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; }
+  h1 { font-size:20px; }
+  .sub { color:var(--muted); font-size:13px; margin-top:2px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; box-shadow:0 1px 3px rgba(20,30,60,.04); }
+  h2 { font-size:15px; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+  .step { display:inline-flex; width:20px; height:20px; border-radius:50%; background:var(--brand); color:#fff; font-size:12px; align-items:center; justify-content:center; flex:none; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .grid .full { grid-column:1/-1; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:5px; }
+  input[type=text], input[type=date], select, textarea { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; background:#fbfcfe; outline:none; }
+  input:focus, select:focus, textarea:focus { border-color:var(--brand); }
+  textarea { font-family:Consolas,Menlo,monospace; font-size:12px; resize:vertical; }
+  .mods { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  .mods label { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--text); background:#f7f9fd; border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:0; cursor:pointer; }
+  .mods input { accent-color:var(--brand); }
+  .btns { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+  button { padding:10px 22px; border:none; border-radius:8px; font-size:14px; cursor:pointer; }
+  .btn-primary { background:var(--brand); color:#fff; }
+  .btn-primary:hover { filter:brightness(1.08); }
+  .btn-ghost { background:#eef1f7; color:var(--text); }
+  .out { width:100%; min-height:110px; margin-top:12px; font-size:11px; }
+  .status { margin-top:10px; font-size:13px; min-height:18px; }
+  .ok { color:var(--ok); } .err { color:var(--err); }
+  .tips { font-size:12px; color:var(--muted); line-height:1.8; }
+  .tips code { background:#f0f2f7; padding:1px 5px; border-radius:4px; font-size:11px; }
+  .hint-box { background:#fff8e6; border:1px solid #f0d48a; border-radius:8px; padding:10px 12px; font-size:12px; color:#7a5b12; margin-bottom:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">L</div>
+    <div>
+      <h1>License 签发台</h1>
+      <div class="sub">企业微信会话存档 · 私有化年费授权 · 厂商侧离线工具（浏览器生成，私钥不出本机）</div>
+    </div>
+  </header>
+
+  <div class="card">
+    <h2><span class="step">1</span> 选择厂商私钥</h2>
+    <div class="hint-box">私钥由厂商保管（服务器 <code>data/license_private.pem</code>），切勿外发。本工具在浏览器本地签名，不会上传任何文件。</div>
+    <label>私钥文件（PKCS#8 PEM，选择 <code>license_private.pem</code>）</label>
+    <input type="file" id="privFile" accept=".pem,.key">
+    <div class="status" id="keyStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">2</span> 填写授权信息</h2>
+    <div class="grid">
+      <div><label>客户名称 *</label><input type="text" id="customer" placeholder="如：某某集团"></div>
+      <div><label>授权群数上限（0=不限）</label><input type="text" id="maxRooms" value="0"></div>
+      <div><label>签发日期</label><input type="date" id="issued"></div>
+      <div><label>到期日期 *</label><input type="date" id="expire"></div>
+    </div>
+    <div style="margin-top:12px"><label>授权模块（默认全部）</label>
+      <div class="mods" id="mods"></div>
+    </div>
+    <div style="margin-top:14px">
+      <label><input type="checkbox" id="bindMachine" style="accent-color:var(--brand); margin-right:6px; vertical-align:-2px;"> 绑定机器（防止一台 License 多机共用；不绑 = 可迁移部署）</label>
+    </div>
+    <div id="fpRow" style="margin-top:10px; display:none">
+      <label>客户机指纹（由客户系统「授权 License → 本机指纹」提供，32 位）</label>
+      <input type="text" id="fp" placeholder="如 a7c452544e923dd35780cbb7283163d6">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">3</span> 生成并交付</h2>
+    <div class="btns">
+      <button class="btn-primary" onclick="generate()">生成 License</button>
+      <button class="btn-ghost" onclick="copyOut()">复制内容</button>
+      <button class="btn-ghost" onclick="downloadOut()">下载 license.key</button>
+      <button class="btn-ghost" onclick="clearOut()">清空</button>
+    </div>
+    <div class="status" id="genStatus"></div>
+    <label style="margin-top:10px">License 内容（发给客户后，客户在「系统管理 → 授权 License → 粘贴/上传」激活）</label>
+    <textarea class="out" id="out" placeholder="生成后显示在此…" readonly></textarea>
+  </div>
+
+  <div class="card tips">
+    <h2>使用说明</h2>
+    <p>① 客户部署系统后，在「系统管理 → 授权 License」复制<b>本机指纹</b>发给你（若不绑机器可跳过）。</p>
+    <p>② 打开本工具：选择私钥 → 填客户/到期日/模块 →（可选）勾选绑机器并填指纹 → 生成。</p>
+    <p>③ 把生成的 License 内容（或 license.key 文件）发给客户；客户粘贴或上传后点「验证并激活」，显示「有效」即完成。</p>
+    <p>④ 到期前系统会自动提醒；续费时用相同私钥重签（新的到期日）发给客户覆盖激活即可。</p>
+  </div>
+</div>
+
+<script>
+const MODULES = [
+  ["archive", "会话存档采集"], ["ocr", "OCR 识别"], ["extract", "结构化抽取"],
+  ["risk", "风险研判预警"], ["delivery", "预警投递"], ["records", "结构化数据"],
+  ["templates", "抽取模板"], ["models", "模型配置"], ["dashboard", "看板统计"], ["admin", "系统管理"],
+];
+let privKeyPem = "";
+
+function b64url(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function pemToDer(pem) {
+  const b64 = pem.replace(/-----(BEGIN|END)[^-]+-----/g, "").replace(/\s+/g, "");
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+document.getElementById("issued").value = new Date().toISOString().slice(0, 10);
+document.getElementById("mods").innerHTML = MODULES.map(
+  ([k, label]) => `<label><input type="checkbox" value="${k}" checked> ${label} <span style="color:var(--muted)">${k}</span></label>`
+).join("");
+document.getElementById("bindMachine").onchange = (e) => {
+  document.getElementById("fpRow").style.display = e.target.checked ? "" : "none";
+};
+document.getElementById("privFile").onchange = async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  privKeyPem = await f.text();
+  const st = document.getElementById("keyStatus");
+  try {
+    await crypto.subtle.importKey("pkcs8", pemToDer(privKeyPem), { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+    st.className = "status ok"; st.textContent = "✓ 私钥已加载：" + f.name;
+  } catch (err) {
+    st.className = "status err"; st.textContent = "✗ 私钥无效：" + err.message;
+  }
+};
+
+async function generate() {
+  const st = document.getElementById("genStatus");
+  st.className = "status"; st.textContent = "";
+  if (!privKeyPem) { st.className = "status err"; st.textContent = "请先在步骤 1 选择厂商私钥（license_private.pem）"; return; }
+  const customer = document.getElementById("customer").value.trim();
+  const expire = document.getElementById("expire").value;
+  const issued = document.getElementById("issued").value || new Date().toISOString().slice(0, 10);
+  const maxRooms = parseInt(document.getElementById("maxRooms").value || "0", 10);
+  const bindMachine = document.getElementById("bindMachine").checked;
+  const fp = bindMachine ? document.getElementById("fp").value.trim() : "";
+  if (!customer) { st.className = "status err"; st.textContent = "请填写客户名称"; return; }
+  if (!expire) { st.className = "status err"; st.textContent = "请选择到期日期"; return; }
+  if (bindMachine && !fp) { st.className = "status err"; st.textContent = "已勾选绑定机器，请填写客户机指纹"; return; }
+  const modules = Array.from(document.querySelectorAll('#mods input:checked')).map((x) => x.value);
+
+  const payload = { customer, issued_at: issued, expire_at: expire, modules, max_rooms: maxRooms, machine_bound: bindMachine, fp };
+  const body = b64url(new TextEncoder().encode(JSON.stringify(payload)));
+  try {
+    const key = await crypto.subtle.importKey("pkcs8", pemToDer(privKeyPem), { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+    const sig = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(body)));
+    const lic = body + "." + b64url(sig);
+    document.getElementById("out").value = lic;
+    st.className = "status ok";
+    st.textContent = `✓ 已生成：${customer}｜到期 ${expire}｜模块 ${modules.length} 个${bindMachine ? "｜已绑机器" : "｜未绑机器"}。可复制或下载发给客户。`;
+  } catch (err) {
+    st.className = "status err"; st.textContent = "生成失败：" + err.message;
+  }
+}
+function copyOut() {
+  const o = document.getElementById("out");
+  if (!o.value) return;
+  navigator.clipboard.writeText(o.value).then(() => toast("已复制到剪贴板")).catch(() => { o.select(); document.execCommand("copy"); toast("已复制"); });
+}
+function downloadOut() {
+  const o = document.getElementById("out");
+  if (!o.value) return;
+  const blob = new Blob([o.value], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "license.key";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function clearOut() { document.getElementById("out").value = ""; }
+function toast(m) {
+  const old = document.getElementById("toast");
+  if (old) old.remove();
+  const t = document.createElement("div");
+  t.id = "toast";
+  t.textContent = m;
+  t.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1f2430;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,.18)";
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+</script>
+</body>
+</html>
