@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>私有化独立部署·年费模式 功能增补方案</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+         color: #1f2937; line-height: 1.65; margin: 0; padding: 40px 56px; background: #fff; }
+  h1 { font-size: 26px; font-weight: 700; margin: 0 0 6px; }
+  h2 { font-size: 19px; font-weight: 700; margin: 38px 0 14px; padding-left: 11px; border-left: 4px solid #185FA5; }
+  h3 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; }
+  p { margin: 8px 0; font-size: 14px; }
+  .sub { color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 4px; font-size: 13px; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 11px; text-align: left; vertical-align: top; }
+  th { background: #f3f6fb; font-weight: 600; color: #0C447C; }
+  tr:nth-child(even) td { background: #fafbfc; }
+  .must { color: #A32D2D; font-weight: 700; }
+  .plus { color: #0F6E56; font-weight: 700; }
+  .ops  { color: #854F0B; font-weight: 700; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 12px; }
+  .tm { background: #FCEBEB; color: #A32D2D; }
+  .tp { background: #E1F5EE; color: #0F6E56; }
+  .to { background: #FAEEDA; color: #854F0B; }
+  ul { margin: 8px 0; padding-left: 20px; font-size: 14px; }
+  li { margin: 4px 0; }
+  .callout { background: #f3f6fb; border: 1px solid #c9dbf0; border-radius: 8px; padding: 14px 18px; margin: 16px 0; font-size: 14px; }
+  .footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid #eee; color: #9ca3af; font-size: 12px; }
+  @media print { body { padding: 18px; } h2 { page-break-after: avoid; } table { page-break-inside: avoid; } }
+</style>
+</head>
+<body>
+  <h1>私有化独立部署 · 年费模式 功能增补方案</h1>
+  <div class="sub">wecom-archive-agent — 每家客户独立私有化部署、按年 License 收费 — 2026-08-18</div>
+
+  <h2>一、路线确认与架构影响</h2>
+  <p>选定"<strong>每家独立私有化部署 + 按年收费</strong>"后，相对通用 SaaS 路线有两点重大简化，也有两点必须补强：</p>
+  <div class="callout">
+    <strong>可省掉的（不用做）</strong>：多租户隔离（每实例即一客户）、用量计量与在线计费、集中式账号体系。<br>
+    <strong>必须补强的（私有化年费特有）</strong>：① <strong>License 授权与年审</strong>（收费基石）；② <strong>一键部署 + 离线安装 + 自助运维</strong>（降低每家交付成本）；③ <strong>合规与脱敏</strong>（企微存档强监管）；④ <strong>远程诊断与升级通道</strong>（年费维保的支撑）。
+  </div>
+
+  <h2>二、交付必备功能（不做不能卖）</h2>
+  <table>
+    <tr><th style="width:170px">功能模块</th><th>为什么私有化年费必须做</th><th style="width:200px">具体要增加的能力</th></tr>
+    <tr><td class="must">License 授权系统</td><td>按年收费的收费基石，必须能签发、激活、到期管控</td><td>机器指纹（CPU/主板/网卡）、离线激活（request→license 文件）、有效期校验、模块授权、防篡改签名、到期提醒与降级</td></tr>
+    <tr><td class="must">一键部署 + 离线安装</td><td>每家都要装，交付成本必须压到最低</td><td>Docker Compose 模板、离线镜像包（tar 导出无需公网）、自动初始化库与种子、部署向导、升级脚本（含 DB 迁移与回滚）</td></tr>
+    <tr><td class="must">数据库升级 PG</td><td>SQLite 不适合生产并发与备份</td><td>PostgreSQL 引擎、JSONB、向量检索、自动备份与一键恢复脚本</td></tr>
+    <tr><td class="must">客户自助运维后台</td><td>年费维保无法每家都人工盯</td><td>系统状态看板（服务/资源）、日志下载、License 状态与续费入口、备份/恢复操作、版本与升级通道</td></tr>
+    <tr><td class="must">合规与脱敏</td><td>企微会话存档属强监管，客户法务必查</td><td>员工知情告知存证、敏感字段脱敏展示/落库、留存期与自动清理、操作审计日志、证据链完整性</td></tr>
+    <tr><td class="must">安全加固</td><td>私有化环境也常被攻，且影响续费</td><td>首次启动强制随机密钥、密码策略与强制改密、登录失败锁定、操作审计、可选 HTTPS/反代模板</td></tr>
+    <tr><td class="must">远程支持与诊断</td><td>年费含维保，需低成本远程排障</td><td>脱敏诊断报告导出、可选远程协助通道（客户授权）、版本遥测（客户同意）</td></tr>
+    <tr><td class="must">模型私有化与降本</td><td>外部大模型按量计费会吃光年费利润</td><td>本地模型可选（Ollama/私有部署）、模型路由（按场景选模型）、结果缓存去重、离线模型包</td></tr>
+  </table>
+
+  <h2>三、产品增值功能（提升年费价值、可涨价）</h2>
+  <p>下面这些不是"卖得出去"的门槛，但决定了年费能定多高、续费率多好，是和竞品拉开差距的地方：</p>
+  <table>
+    <tr><th style="width:170px">功能</th><th>价值点</th><th style="width:200px">建议增加的能力</th></tr>
+    <tr><td class="plus">行业模板可配置</td><td>不同客户业务字段不同，固定 10 类不够用</td><td>客户自定义字段/规则、模板导入导出、模板版本管理</td></tr>
+    <tr><td class="plus">处置闭环与 SOP</td><td>当前只预警不闭环，客户要"处理掉"</td><td>处置流程、工单流转、处置率/响应时效统计、回执确认</td></tr>
+    <tr><td class="plus">数据洞察报表</td><td>管理层要"看趋势"而非只看列表</td><td>质检报表、风险趋势、对话/销售分析、Excel/PDF 导出</td></tr>
+    <tr><td class="plus">全文检索</td><td>私有化客户数据量大，找消息是刚需</td><td>跨消息/抽取/附件的结构化检索与高亮</td></tr>
+    <tr><td class="plus">移动端 / 管理 App</td><td>管理层移动查看预警</td><td>H5 适配或轻量 App、预警推送</td></tr>
+    <tr><td class="plus">知识库 / 自定义词库</td><td>提升抽取准确率（客户专属术语）</td><td>客户词库管理、抽取反馈纠错闭环</td></tr>
+    <tr><td class="plus">内部系统集成</td><td>私有化环境内要打通已有系统</td><td>与客户 OA / HR / CRM 对接、Webhook 出</td></tr>
+    <tr><td class="plus">白标</td><td>大客户要换 LOGO / 名称</td><td>品牌名、LOGO、配色可配置</td></tr>
+    <tr><td class="plus">帮助与培训</td><td>降低私有化交付后的支持量</td><td>内置帮助中心、操作指引、视频/文档</td></tr>
+  </table>
+
+  <h2>四、年费模式运营支撑（商务侧）</h2>
+  <ul>
+    <li><strong>License 生命周期管理</strong>：生成→激活→运行中→临期（提前 30/15/7 天提醒）→到期（功能降级或只读）→续费→新 License。</li>
+    <li><strong>版本通道</strong>：稳定版（客户生产用）与尝鲜版分离，升级由客户在运维后台一键触发，厂商推送离线升级包。</li>
+    <li><strong>维保 SLA</strong>：年费含远程支持响应时效（如工作日 4 小时响应），重大 bug 走紧急离线补丁。</li>
+    <li><strong>报价结构建议</strong>：首年 = 软件授权 + 实施部署费；续年 = 年费（含维保+升级）。大模型外部调用费可单列或包干。</li>
+  </ul>
+
+  <h2>五、优先级与节奏（相对原方案调整）</h2>
+  <div class="callout">
+    <strong>取消/降级</strong>：多租户隔离、SaaS 在线计费计量（本路线不需）。<br>
+    <strong>Phase A（0–2 月，能交付第一家）</strong>：License 系统 + Docker 离线部署 + PostgreSQL + 安全加固 + 基础运维后台 + 合规脱敏。<br>
+    <strong>Phase B（2–4 月，可规模化复制）</strong>：远程诊断 + 升级通道 + 模型私有化可选 + 自助运维完善 + 行业模板可配置。<br>
+    <strong>Phase C（4–8 月，提客单价）</strong>：处置闭环 + 数据洞察报表 + 全文检索 + 移动端 + 白标 + 内部集成。
+  </div>
+
+  <div class="footer">
+    本方案基于 wecom-archive-agent 全量代码审计结论，针对"私有化独立部署 + 按年收费"路线裁剪。相较通用 SaaS 方案，已剔除多租户与在线计费，强化 License / 部署运维 / 合规 / 远程诊断四类私有化刚需。模块工作量可在立项后细化拆解。
+  </div>
+</body>
+</html>

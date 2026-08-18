@@ -13,6 +13,7 @@ from app.api import (
     auth,
     delivery_config,
     extract as extract_api,
+    license as license_api,
     messages,
     models,
     permissions,
@@ -34,10 +35,11 @@ api_router = APIRouter()
 # 认证（登录公开，其余接口内部按 require_auth 控制）
 api_router.include_router(auth.router, tags=["认证"])
 
-# 平台管理（用户/角色/权限目录）
+# 平台管理（用户/角色/权限目录/授权 License）
 api_router.include_router(users.router, tags=["用户管理"])
 api_router.include_router(roles.router, tags=["角色管理"])
 api_router.include_router(permissions.router, tags=["权限管理"])
+api_router.include_router(license_api.router, tags=["授权管理"])
 
 # 业务路由：全部要求登录（prefix 传空串=不额外加前缀）
 _biz_routers = [

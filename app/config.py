@@ -175,6 +175,30 @@ class Settings(BaseSettings):
     # 登录态有效期（小时）
     AUTH_TOKEN_HOURS: int = 12
 
+    # ---------------- 授权 License（私有化年费） ----------------
+    # 公钥随部署包分发，客户机用它验签；私钥仅厂商持有（data/ 已忽略，不提交）
+    LICENSE_PUBLIC_KEY_PATH: str = str(BASE_DIR / "app" / "services" / "license" / "license_public.pem")
+    # 厂商侧私钥路径（仅供 scripts/gen_license.py 本地签发用）
+    LICENSE_PRIVATE_KEY_PATH: str = str(BASE_DIR / "data" / "license_private.pem")
+    # 激活后 License 文件存放路径
+    LICENSE_PATH: str = str(BASE_DIR / "data" / "license.key")
+    # 是否强制校验 License：开发/演示默认 False（无 License 也放行）；生产部署设 True
+    LICENSE_REQUIRED: bool = False
+    # 到期后宽限天数（宽限期内仍可用，仅界面提示续费）
+    LICENSE_GRACE_DAYS: int = 7
+
+    # ---------------- 授权 License（私有化年费） ----------------
+    # 公钥随部署包分发，用于客户机验签；私钥仅厂商持有用于签发，不进仓库/不进部署包。
+    LICENSE_PUBLIC_KEY_PATH: str = str(BASE_DIR / "app" / "services" / "license" / "license_public.pem")
+    # 厂商侧私钥路径（仅本地生成 License 用；data/ 已被 .gitignore 忽略，不会提交）
+    LICENSE_PRIVATE_KEY_PATH: str = str(BASE_DIR / "data" / "license_private.pem")
+    # 激活后写入的 License 文件路径
+    LICENSE_PATH: str = str(BASE_DIR / "data" / "license.key")
+    # 是否强制校验 License：开发/演示默认 False（无 License 也放行，不阻断既有数据）；生产部署设 True
+    LICENSE_REQUIRED: bool = False
+    # 到期后宽限天数（宽限期内仍可用，仅提示）
+    LICENSE_GRACE_DAYS: int = 7
+
     @property
     def filter_room_id_set(self) -> set[str]:
         return {r.strip() for r in self.FILTER_ROOM_IDS.split(",") if r.strip()}

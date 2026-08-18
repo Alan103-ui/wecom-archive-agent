@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wecom-archive-agent 商业化改造方案</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+         color: #1f2937; line-height: 1.65; margin: 0; padding: 40px 56px; background: #fff; }
+  h1 { font-size: 26px; font-weight: 700; margin: 0 0 6px; }
+  h2 { font-size: 19px; font-weight: 700; margin: 38px 0 14px; padding-left: 11px; border-left: 4px solid #185FA5; }
+  h3 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; }
+  p { margin: 8px 0; font-size: 14px; }
+  .sub { color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 4px; font-size: 13px; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 11px; text-align: left; vertical-align: top; }
+  th { background: #f3f6fb; font-weight: 600; color: #0C447C; }
+  tr:nth-child(even) td { background: #fafbfc; }
+  .p0 { color: #A32D2D; font-weight: 700; }
+  .p1 { color: #0F6E56; font-weight: 700; }
+  .p2 { color: #854F0B; font-weight: 700; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 12px; }
+  .t0 { background: #FCEBEB; color: #A32D2D; }
+  .t1 { background: #E1F5EE; color: #0F6E56; }
+  .t2 { background: #FAEEDA; color: #854F0B; }
+  ul { margin: 8px 0; padding-left: 20px; font-size: 14px; }
+  li { margin: 4px 0; }
+  .callout { background: #f3f6fb; border: 1px solid #c9dbf0; border-radius: 8px; padding: 14px 18px; margin: 16px 0; font-size: 14px; }
+  .footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid #eee; color: #9ca3af; font-size: 12px; }
+  .metrics { display: flex; gap: 14px; flex-wrap: wrap; margin: 14px 0; }
+  .metric { flex: 1; min-width: 150px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
+  .metric .n { font-size: 22px; font-weight: 700; color: #185FA5; }
+  .metric .l { font-size: 12px; color: #6b7280; margin-top: 2px; }
+  @media print { body { padding: 18px; } h2 { page-break-after: avoid; } table { page-break-inside: avoid; } }
+</style>
+</head>
+<body>
+  <h1>wecom-archive-agent 商业化改造方案</h1>
+  <div class="sub">企业微信会话存档 · 风险分级预警系统 — 从 MVP 到可交付产品的演进路径 · 2026-08-18</div>
+
+  <h2>一、现状定位（基于全量代码审计）</h2>
+  <p>系统已完成核心链路闭环，代码质量整体较高，但产品形态仍停留在<strong>单租户演示 / 本地部署</strong>阶段。商业化需在保持现有能力基础上，补齐"多租户、生产级存储、合规、计费、可观测"五根支柱。</p>
+  <div class="metrics">
+    <div class="metric"><div class="n">✓</div><div class="l">核心链路完整：采集→OCR→抽取→风险→投递→RBAC</div></div>
+    <div class="metric"><div class="n">32</div><div class="l">自动化测试通过（含回归）</div></div>
+    <div class="metric"><div class="n">1 / 1</div><div class="l">租户 / 数据库（单点，需拆分）</div></div>
+    <div class="metric"><div class="n">0</div><div class="l">计量·计费·合规存证能力</div></div>
+  </div>
+  <table>
+    <tr><th style="width:120px">维度</th><th>当前状态</th><th>商业化缺口</th></tr>
+    <tr><td>部署形态</td><td>本地手动 <code>uvicorn</code> 启动，SQLite 文件库</td><td>无容器化、无集群、无高可用、无备份策略</td></tr>
+    <tr><td>租户模型</td><td>单租户，表无 <code>tenant_id</code></td><td>无法隔离客户数据，无法按客户开通/停用</td></tr>
+    <tr><td>安全</td><td>已修 CORS、RBAC 401/403、会话泄漏；但默认弱口令、默认密钥、无审计日志</td><td>缺操作审计、密钥托管、密码策略、入侵防护</td></tr>
+    <tr><td>合规</td><td>仅存档与风险识别</td><td>缺员工知情存证、敏感字段脱敏、留存期与清理、证据链</td></tr>
+    <tr><td>成本</td><td>强依赖外部大模型（智谱），无路由/缓存</td><td>毛利不可控，需模型路由 + 私有化可选</td></tr>
+    <tr><td>前端</td><td>vanilla JS 单页，已做权限门控</td><td>难维护、无移动端、无白标、无 onboarding</td></tr>
+    <tr><td>可观测</td><td>仅 <code>/healthz</code> + 文本日志</td><td>缺指标、集中日志、告警、链路追踪</td></tr>
+  </table>
+
+  <h2>二、商业化能力差距矩阵</h2>
+  <p>按优先级分级：<span class="tag t0">P0 地基</span> 不过关不能卖；<span class="tag t1">P1 产品化</span> 决定能否规模化；<span class="tag t2">P2 增值</span> 拉开与竞品差距。</p>
+  <table>
+    <tr><th style="width:52px">级别</th><th style="width:170px">改造项</th><th>现状 → 目标</th><th style="width:120px">关键动作</th></tr>
+    <tr><td class="p0">P0</td><td>多租户隔离</td><td>单库单租户 → 行级 <code>tenant_id</code> + 租户路由中间件 + 独立 schema/库可选</td><td>加字段、改查询、租户上下文</td></tr>
+    <tr><td class="p0">P0</td><td>数据库升级</td><td>SQLite → PostgreSQL（并发、JSONB、向量检索、备份）</td><td>换引擎、方言适配、迁移脚本</td></tr>
+    <tr><td class="p0">P0</td><td>容器化交付</td><td>手动启动 → Docker Compose / Helm，一键部署 + 升级脚本</td><td>镜像、编排、配置外置</td></tr>
+    <tr><td class="p0">P0</td><td>安全加固</td><td>默认密钥/弱口令 → 强制随机密钥、密码策略、操作审计日志表、密钥托管</td><td>启动校验、审计模块</td></tr>
+    <tr><td class="p0">P0</td><td>合规与脱敏</td><td>仅识别 → 员工知情存证、敏感字段脱敏展示/落库、留存期自动清理、证据链</td><td>合规子模块、脱敏层</td></tr>
+    <tr><td class="p0">P0</td><td>License 授权</td><td>无 → 机器指纹 + 有效期 + 模块授权校验</td><td>授权服务、离线激活</td></tr>
+    <tr><td class="p1">P1</td><td>计费与订阅</td><td>无 → 用量计量（消息/附件/API/席位）、套餐、订单、支付对接</td><td>计量表、账单服务</td></tr>
+    <tr><td class="p1">P1</td><td>模型路由降本</td><td>单外部模型 → 按场景路由（便宜/贵）、结果缓存、批处理、私有化可选</td><td>路由层、成本看板</td></tr>
+    <tr><td class="p1">P1</td><td>前端产品化</td><td>vanilla JS → 框架化（Vue/React）、移动端 H5、白标主题、引导流程</td><td>前端重构、主题系统</td></tr>
+    <tr><td class="p1">P1</td><td>监控可观测</td><td>healthz → Prometheus 指标、结构化日志、告警、链路追踪</td><td>埋点、仪表盘</td></tr>
+    <tr><td class="p1">P1</td><td>模板可配置</td><td>10 类内置 → 用户自定义字段/规则、模板导入导出</td><td>模板编辑器</td></tr>
+    <tr><td class="p2">P2</td><td>数据洞察</td><td>风险列表 → 质检报表、销售转化、合规趋势、对话分析</td><td>分析模块</td></tr>
+    <tr><td class="p2">P2</td><td>生态集成</td><td>企微单点 → 钉钉/飞书/邮件/工单/CRM 对接</td><td>集成网关</td></tr>
+    <tr><td class="p2">P2</td><td>私有化版本</td><td>无 → 离线授权、信创适配（麒麟/达梦）、内网部署包</td><td>私有化发行</td></tr>
+    <tr><td class="p2">P2</td><td>模板市场</td><td>内置 → 行业模板交易/共享</td><td>市场与分发</td></tr>
+    <tr><td class="p2">P2</td><td>AI 辅助处置</td><td>预警 → 自动生成回复建议、处置 SOP、知识沉淀</td><td>智能处置引擎</td></tr>
+  </table>
+
+  <h2>三、三阶段演进路线</h2>
+  <div class="callout">
+    <strong>阶段1 · 地基（0–3 月，P0）</strong>：多租户隔离 + PostgreSQL + 容器化 + 安全审计 + 合规脱敏 + License。目标：能接第一批<strong>私有化交付</strong>客户，数据不串租户、部署可复制。<br>
+    <strong>阶段2 · 产品化（3–6 月，P1）</strong>：SaaS 计费订阅 + 模型路由降本 + 前端重构移动端 + 监控可观测 + 模板可配置。目标：开放<strong>自助试用/订阅</strong>，规模化获客。<br>
+    <strong>阶段3 · 增值（6–12 月，P2）</strong>：数据洞察报表 + 多生态集成 + 私有化发行 + 模板市场 + AI 辅助处置。目标：<strong>提升客单价与续费率</strong>，建立壁垒。
+  </div>
+
+  <h2>四、关键风险与决策点</h2>
+  <ul>
+    <li><strong>合规是最大红线。</strong>企业微信会话存档属强监管场景（员工须知情、数据须合规留存与脱敏）。合规能力应<strong>先于</strong>功能扩张建设，否则无法过客户法务与等保。</li>
+    <li><strong>路线分叉：私有化 vs SaaS。</strong>两者对架构影响巨大（私有化重离线授权/信创，SaaS 重多租户/计量）。建议<strong>双轨并行</strong>：内核统一，交付层分流，避免后期返工。</li>
+    <li><strong>模型成本决定毛利。</strong>当前强依赖外部大模型，需尽早做模型路由（按风险等级选模型）、结果缓存、批处理，并提供私有化模型选项，否则大客户用量会吃光利润。</li>
+    <li><strong>前端技术债。</strong>vanilla JS 在商业化迭代中会显著拖慢速度，应在阶段2 前完成框架化重构，否则功能越多越难维护。</li>
+  </ul>
+
+  <h2>五、最小可卖 MVP 建议</h2>
+  <p>若希望尽快产生收入，建议<strong>阶段1 收口即对外交付私有化版</strong>，暂不建 SaaS：</p>
+  <ul>
+    <li>交付物：Docker 镜像 + 部署脚本 + License 激活 + 合规脱敏 + 操作审计。</li>
+    <li>目标客户：对数据主权敏感的中大型企（金融、制造、政企），单笔私有化授权 + 年维保。</li>
+    <li>同时并行做 PostgreSQL 与多租户，为阶段2 SaaS 铺路。</li>
+    <li>节奏：3 个月出私有化 MVP → 6 个月 SaaS 试运营 → 12 个月增值生态。</li>
+  </ul>
+
+  <div class="footer">
+    本方案基于 wecom-archive-agent 全量代码审计（app/ + frontend/ 共 77 个 py + 前端 2664 行）与功能完成度评估生成。所有改造项均可映射到现有代码模块，工作量可在立项后细化拆解。
+  </div>
+</body>
+</html>

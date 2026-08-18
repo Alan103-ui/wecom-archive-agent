@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-18-4';
+const APP_JS_VERSION = '2026-08-18-5';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -157,6 +157,7 @@ const SUBTAB_PERMS = {
   'cfg-templates': 'templates:view', 'cfg-models': 'models:view', 'cfg-extract-compare': 'extract:view',
   'cfg-system': 'system:view', 'cfg-wecom': 'wecom:view', 'cfg-settings': 'settings:view',
   'admin-users': 'users:view', 'admin-roles': 'roles:view', 'admin-perms': 'permissions:view',
+  'admin-license': 'users:view',
 };
 
 function gateSubtabs() {
@@ -361,6 +362,7 @@ const SUB_LOADERS = {
   'admin-users': loadUsers,
   'admin-roles': loadRoles,
   'admin-perms': loadPermCatalog,
+  'admin-license': loadLicense,
 };
 function bindSubtabs() {
   $$('.view').forEach((v) => {
@@ -2611,6 +2613,74 @@ async function loadPermCatalog() {
       </div>`;
   } catch (e) { el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
 }
+
+/* ================ License 授权（私有化年费） ================ */
+async function loadLicense() {
+  const el = $('#adminLicenseBox');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const s = await req('/license/status');
+    const badge = {
+      valid: '<span class="tag" style="background:#e8f5e9;color:#2e7d32">有效</span>',
+      grace: '<span class="tag" style="background:#fff3e0;color:#e65100">宽限期</span>',
+      expired: '<span class="tag tag-danger">已过期</span>',
+      not_found: '<span class="tag tag-skipped">未授权</span>',
+      machine_mismatch: '<span class="tag tag-danger">机器不匹配</span>',
+      invalid: '<span class="tag tag-danger">无效</span>',
+    }[s.status] || esc(s.status || '');
+    const days = s.days_left;
+    const daysTxt = (days === null || days === undefined) ? '—' : (days < 0 ? `${days} 天（已超期）` : `${days} 天`);
+    const mods = (s.module_labels && s.module_labels.length)
+      ? s.module_labels.map((m) => `<span class="lvl-tag">${esc(m)}</span>`).join(' ')
+      : '<span class="muted">—</span>';
+    el.innerHTML = `
+      <div class="admin-bar"><h3>License 授权</h3>
+        <button class="btn btn-primary btn-sm" onclick="doActivateLicense()">激活 / 更新许可证</button>
+      </div>
+      <p class="hint">${esc(s.message || '')}${s.required ? '　⚠️ 本机为强制校验模式（LICENSE_REQUIRED=true），无有效许可证将受限运行。' : '　当前为开发/演示模式（不强制校验），生产部署请设置 LICENSE_REQUIRED=true。'}</p>
+      <div class="kv-grid">
+        <div><label>状态</label><div>${badge}</div></div>
+        <div><label>客户名称</label><div>${esc(s.customer || '—')}</div></div>
+        <div><label>签发日期</label><div>${esc(s.issued_at || '—')}</div></div>
+        <div><label>到期日期</label><div>${esc(s.expire_at || '—')} <span class="muted">（剩余 ${daysTxt}）</span></div></div>
+        <div><label>授权模块</label><div>${mods}</div></div>
+        <div><label>群数上限</label><div>${s.max_rooms ? s.max_rooms + ' 个' : '不限'}</div></div>
+        <div><label>机器绑定</label><div>${s.machine_bound ? '已绑定本机（换机需重新签发）' : '未绑定（可迁移部署）'}</div></div>
+        <div><label>本机指纹</label><div><code style="font-size:11px">${esc(s.fingerprint || '—')}</code></div></div>
+      </div>
+      <div class="hint" style="margin-top:12px">年费模式说明：续费时向厂商提供「本机指纹」申请新的许可证文件，在下方激活后自动替换。许可证使用 RSA 非对称签名，无法自行篡改或伪造。</div>`;
+  } catch (e) { el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
+}
+
+window.doActivateLicense = () => {
+  openDrawer('激活 / 更新许可证', `
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-row"><label>粘贴许可证内容</label>
+        <textarea id="licText" rows="6" placeholder="粘贴厂商签发的许可证全文（License 文件内容）" style="width:100%"></textarea>
+      </div>
+      <div class="form-row"><label>或上传许可证文件</label><input id="licFile" type="file" accept=".key,.lic,.txt"></div>
+    </div>
+    <div class="row-btns">
+      <button class="btn btn-primary btn-sm" onclick="submitActivateLicense()">验证并激活</button>
+      <button class="btn btn-sm" onclick="closeDrawer()">取消</button>
+    </div>`);
+};
+
+window.submitActivateLicense = async () => {
+  const text = ($('#licText').value || '').trim();
+  const f = $('#licFile');
+  let body;
+  if (text) body = { license_text: text };
+  else if (f && f.files && f.files[0]) body = { license_text: (await f.files[0].text()).trim() };
+  else { toast('请粘贴许可证内容或选择文件', 'err'); return; }
+  try {
+    await req('/license/activate', { method: 'POST', body: JSON.stringify(body) });
+    toast('许可证已激活', 'ok');
+    closeDrawer();
+    loadLicense();
+  } catch (e) { toast('激活失败：' + e.message, 'err'); }
+};
 
 /* ================ 修改密码 ================ */
 function openChangePwd() {

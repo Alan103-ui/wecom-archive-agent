@@ -28,6 +28,7 @@ from app.services.llm.seed import seed_model_defaults
 from app.services.risk.seed import seed_risk_defaults
 from app.services.rooms_seed import seed_default_rooms
 from app.services.auth.catalog import seed_auth
+from app.services.license.manager import get_license_status
 
 
 class NoCacheStaticFiles(StaticFiles):
@@ -51,6 +52,25 @@ logger = logging.getLogger("app")
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 
+def _check_license() -> None:
+    """启动时校验 License：非强制模式仅提示；强制模式无效时告警（不阻断启动，便于排障）。"""
+    st = get_license_status()
+    if st["status"] == "valid":
+        if st.get("days_left") is not None and st["days_left"] <= settings.LICENSE_GRACE_DAYS:
+            logger.warning("License 将于 %s 到期（剩 %s 天），请尽快续费。", st.get("expire_at"), st.get("days_left"))
+        else:
+            logger.info("License 有效：客户=%s，到期=%s", st.get("customer"), st.get("expire_at"))
+    elif st["status"] == "grace":
+        logger.warning("License 已到期，处于 %s 天宽限期，请尽快续费。", settings.LICENSE_GRACE_DAYS)
+    elif st["status"] == "not_found":
+        if settings.LICENSE_REQUIRED:
+            logger.warning("未找到 License 且 LICENSE_REQUIRED=true：系统将以受限模式运行，请尽快激活。")
+        else:
+            logger.info("未配置 License（开发/演示模式，不强制校验）。")
+    else:
+        logger.warning("License 状态异常（%s）：%s", st.get("status"), st.get("message"))
+
+
 def _prepare_dirs() -> None:
     for p in (
         Path(settings.MEDIA_ROOT),
@@ -64,6 +84,7 @@ def _prepare_dirs() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _prepare_dirs()
+    _check_license()
     init_db()
     logger.info("数据库就绪：%s", settings.DATABASE_URL.split("://")[0])
 
