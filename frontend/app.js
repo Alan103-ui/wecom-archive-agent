@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-18-5';
+const APP_JS_VERSION = '2026-08-18-6';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -158,6 +158,7 @@ const SUBTAB_PERMS = {
   'cfg-system': 'system:view', 'cfg-wecom': 'wecom:view', 'cfg-settings': 'settings:view',
   'admin-users': 'users:view', 'admin-roles': 'roles:view', 'admin-perms': 'permissions:view',
   'admin-license': 'users:view',
+  'admin-ops': 'system:view',
 };
 
 function gateSubtabs() {
@@ -363,6 +364,7 @@ const SUB_LOADERS = {
   'admin-roles': loadRoles,
   'admin-perms': loadPermCatalog,
   'admin-license': loadLicense,
+  'admin-ops': loadOpsCenter,
 };
 function bindSubtabs() {
   $$('.view').forEach((v) => {
@@ -2680,6 +2682,60 @@ window.submitActivateLicense = async () => {
     closeDrawer();
     loadLicense();
   } catch (e) { toast('激活失败：' + e.message, 'err'); }
+};
+
+/* ================ 运维中心（私有化自助运维） ================ */
+async function loadOpsCenter() {
+  const el = $('#adminOpsBox');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const v = await req('/system/version');
+    const lic = v.license || {};
+    const licBadge = {
+      valid: '<span class="tag" style="background:#e8f5e9;color:#2e7d32">有效</span>',
+      grace: '<span class="tag" style="background:#fff3e0;color:#e65100">宽限期</span>',
+      expired: '<span class="tag tag-danger">已过期</span>',
+      not_found: '<span class="tag tag-skipped">未授权</span>',
+    }[lic.status] || esc(lic.status || '—');
+    const sch = v.scheduler || {};
+    el.innerHTML = `
+      <div class="admin-bar"><h3>运维中心</h3></div>
+      <div class="kv-grid">
+        <div><label>应用</label><div>${esc(v.app || '')} v${esc(v.version || '')}</div></div>
+        <div><label>运行环境</label><div>Python ${esc(v.python || '')} · ${esc(v.platform || '')}</div></div>
+        <div><label>数据库</label><div>${esc(v.database || '')} · 数据占用 ${esc(String(v.data_size_mb || 0))} MB</div></div>
+        <div><label>采集模式</label><div>${esc(v.collector_mode || '')}</div></div>
+        <div><label>License</label><div>${licBadge} ${esc(lic.customer || '') || ''} <span class="muted">${lic.expire_at ? '到期 ' + esc(lic.expire_at) + '（剩 ' + esc(String(lic.days_left ?? '—')) + ' 天）' : ''}</span></div></div>
+        <div><label>调度器</label><div>${sch.running ? '<span class="tag" style="background:#e8f5e9;color:#2e7d32">运行中</span>' : '<span class="tag tag-danger">未启动</span>'} <span class="muted">${esc(sch.summary || '')}</span></div></div>
+      </div>
+      <div class="admin-bar" style="margin-top:16px"><h3>自助运维操作</h3></div>
+      <div class="row-btns" style="flex-wrap:wrap;gap:8px">
+        <a class="btn btn-sm" href="/api/system/logs/server.log" target="_blank">下载服务日志</a>
+        <a class="btn btn-sm" href="/api/system/logs/audit.log" target="_blank">下载审计日志</a>
+        <a class="btn btn-sm" href="/api/system/logs/run.log" target="_blank">下载运行日志</a>
+        <button class="btn btn-primary btn-sm" onclick="doBackup()">导出数据备份</button>
+      </div>
+      <div class="hint" style="margin-top:12px">备份为 data 目录完整打包（含 SQLite/媒体/配置），可离线保存；恢复时解压回 data/ 后重启容器。审计日志含登录/改密/用户管理事件，可用于合规存证。</div>`;
+  } catch (e) { el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
+}
+
+window.doBackup = async () => {
+  try {
+    toast('正在打包备份…');
+    const r = await fetch('/api/system/backup', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + localStorage.getItem(LS_TOKEN) },
+    });
+    if (!r.ok) { toast('备份失败：' + (await r.text()).slice(0, 120), 'err'); return; }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'wecom-archive-backup-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.tar.gz';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('备份已下载', 'ok');
+  } catch (e) { toast('备份失败：' + e.message, 'err'); }
 };
 
 /* ================ 修改密码 ================ */

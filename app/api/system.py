@@ -3,14 +3,17 @@ app/api/system.py — 健康检查、统计看板、手动触发、游标与调�
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.api.schemas import ActionResult, CursorOut, HealthOut
 from app.collectors import get_collector, reset_collector
 from app.config import settings
-from app.db.database import get_db
+from app.db.database import engine, get_db
 from app.models.entities import (
     Attachment,
     ChatMessage,
@@ -290,3 +293,80 @@ def _model_configs():
         return db.query(ModelConfig).order_by(ModelConfig.created_at).all()
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------- 运维中心（私有化自助运维）
+_SAFE_LOG_FILES = {"server.log", "audit.log", "run.log"}
+
+
+def _data_dir() -> Path:
+    return Path(settings.AUDIT_LOG_PATH).parent
+
+
+@router.get("/version", summary="版本与环境信息", dependencies=[Depends(require_perm("system", "view"))])
+def version_info():
+    import platform
+    import sys
+
+    from app.services.license.manager import get_license_status
+
+    lic = get_license_status()
+    size = 0.0
+    try:
+        for f in _data_dir().rglob("*"):
+            if f.is_file():
+                try:
+                    size += f.stat().st_size
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return {
+        "app": settings.APP_NAME,
+        "version": "1.0.0",
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "database": "sqlite" if settings.is_sqlite else "postgresql",
+        "collector_mode": settings.COLLECTOR_MODE,
+        "data_size_mb": round(size / 1048576, 1),
+        "license": {
+            "status": lic.get("status"),
+            "customer": lic.get("customer"),
+            "expire_at": lic.get("expire_at"),
+            "days_left": lic.get("days_left"),
+        },
+        "scheduler": scheduler_mod.scheduler_status(),
+    }
+
+
+@router.get("/logs/{name}", summary="下载日志文件", dependencies=[Depends(require_perm("system", "view"))])
+def download_log(name: str):
+    if name not in _SAFE_LOG_FILES:
+        raise HTTPException(400, "不允许下载该文件")
+    p = _data_dir() / name
+    if not p.exists():
+        raise HTTPException(404, f"日志文件不存在：{name}")
+    return FileResponse(p, filename=name, media_type="text/plain")
+
+
+@router.post("/backup", summary="导出数据备份（data 目录打包下载）", dependencies=[Depends(require_perm("system", "operate"))])
+def backup():
+    import tarfile
+    import tempfile
+    import time
+
+    # SQLite 先做 WAL checkpoint，保证备份一致
+    if settings.is_sqlite:
+        try:
+            with engine.connect() as c:
+                c.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+        except Exception:  # noqa: BLE001
+            pass
+
+    data_dir = _data_dir()
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    tmp = tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False)
+    tmp.close()
+    with tarfile.open(tmp.name, "w:gz") as tar:
+        tar.add(data_dir, arcname="data", filter=lambda x: None if x.name.endswith(("-wal", "-shm")) else x)
+    return FileResponse(tmp.name, filename=f"wecom-archive-backup-{ts}.tar.gz", media_type="application/gzip")
