@@ -24,6 +24,7 @@ from app.services import pipeline
 from app.services.alert import sender
 from app.services.risk import categories as cat
 from app.services.risk.detector import load_rules
+from app.services.auth.rbac import require_perm
 
 router = APIRouter()
 
@@ -103,7 +104,7 @@ class TargetUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------- 事件列表/统计
-@router.get("/events", response_model=Page[EventOut], summary="风险事件列表")
+@router.get("/events", response_model=Page[EventOut], summary="风险事件列表", dependencies=[Depends(require_perm("risks", "view"))])
 def list_events(
     db: Session = Depends(get_db),
     status: str | None = Query(None, description="pending/acknowledged/resolved/ignored"),
@@ -139,7 +140,7 @@ def list_events(
     return Page(total=total, page=page, page_size=page_size, items=items)
 
 
-@router.get("/stats", summary="风险统计看板")
+@router.get("/stats", summary="风险统计看板", dependencies=[Depends(require_perm("risks", "view"))])
 def risk_stats(db: Session = Depends(get_db)):
     def _group(col):
         return {k or "unknown": v for k, v in db.execute(select(col, func.count()).group_by(col)).all()}
@@ -167,7 +168,7 @@ def risk_stats(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/events/{event_id}", response_model=EventOut, summary="事件详情")
+@router.get("/events/{event_id}", response_model=EventOut, summary="事件详情", dependencies=[Depends(require_perm("risks", "view"))])
 def get_event(event_id: str, db: Session = Depends(get_db)):
     ev = db.get(RiskEvent, event_id)
     if ev is None:
@@ -175,7 +176,7 @@ def get_event(event_id: str, db: Session = Depends(get_db)):
     return ev
 
 
-@router.get("/events/{event_id}/logs", summary="事件投递回执")
+@router.get("/events/{event_id}/logs", summary="事件投递回执", dependencies=[Depends(require_perm("risks", "view"))])
 def event_logs(event_id: str, db: Session = Depends(get_db)):
     ev = db.get(RiskEvent, event_id)
     if ev is None:
@@ -190,7 +191,7 @@ def event_logs(event_id: str, db: Session = Depends(get_db)):
     ]
 
 
-@router.get("/logs", summary="全局投递回执（全链条送达结果）")
+@router.get("/logs", summary="全局投递回执（全链条送达结果）", dependencies=[Depends(require_perm("risks", "view"))])
 def list_logs(
     db: Session = Depends(get_db),
     status: str | None = Query(None, description="sent/failed"),
@@ -262,7 +263,7 @@ def list_logs(
     }
 
 
-@router.post("/events/{event_id}/acknowledge", response_model=ActionResult, summary="确认/处置事件")
+@router.post("/events/{event_id}/acknowledge", response_model=ActionResult, summary="确认/处置事件", dependencies=[Depends(require_perm("risks", "operate"))])
 def acknowledge(event_id: str, reviewer: str = Body("system", embed=True),
                 note: str | None = Body(None, embed=True)):
     db = next(get_db())
@@ -278,7 +279,7 @@ def acknowledge(event_id: str, reviewer: str = Body("system", embed=True),
     return ActionResult(message="已确认", data={"id": event_id})
 
 
-@router.post("/events/{event_id}/resend", response_model=ActionResult, summary="重新发送预警")
+@router.post("/events/{event_id}/resend", response_model=ActionResult, summary="重新发送预警", dependencies=[Depends(require_perm("risks", "operate"))])
 def resend(event_id: str, db: Session = Depends(get_db)):
     ev = db.get(RiskEvent, event_id)
     if ev is None:
@@ -300,14 +301,14 @@ def resend(event_id: str, db: Session = Depends(get_db)):
         raise HTTPException(500, f"重发失败：{e}")
 
 
-@router.post("/rescan", response_model=ActionResult, summary="回填/重扫全部消息")
+@router.post("/rescan", response_model=ActionResult, summary="回填/重扫全部消息", dependencies=[Depends(require_perm("risks", "operate"))])
 def rescan(room_id: str | None = Body(None, embed=True), limit: int | None = Body(None, embed=True)):
     db = next(get_db())
     n = pipeline.risk_rescan(db, room_id=room_id, limit=limit)
     return ActionResult(message=f"已重置 {n} 条消息为待扫描，下一轮风险作业将重扫", data={"count": n})
 
 
-@router.post("/timeout-scan", response_model=ActionResult, summary="立即执行超时回复扫描")
+@router.post("/timeout-scan", response_model=ActionResult, summary="立即执行超时回复扫描", dependencies=[Depends(require_perm("risks", "operate"))])
 def timeout_scan():
     """手动触发一次超时回复提醒扫描（调度作业之外，便于即时验证/补扫）。"""
     stats = pipeline.reply_timeout_scan()
@@ -315,14 +316,14 @@ def timeout_scan():
 
 
 # ---------------------------------------------------------------- 规则
-@router.get("/rules", summary="风险规则列表")
+@router.get("/rules", summary="风险规则列表", dependencies=[Depends(require_perm("risks", "view"))])
 def list_rules(db: Session = Depends(get_db)):
     return db.execute(
         select(RiskRule).order_by(RiskRule.priority.desc(), RiskRule.created_at)
     ).scalars().all()
 
 
-@router.post("/rules", response_model=ActionResult, summary="新建规则")
+@router.post("/rules", response_model=ActionResult, summary="新建规则", dependencies=[Depends(require_perm("risks", "config"))])
 def create_rule(body: RuleCreate, db: Session = Depends(get_db)):
     if body.category not in cat.ALL_CATEGORIES:
         raise HTTPException(400, f"未知分类：{body.category}")
@@ -338,7 +339,7 @@ def create_rule(body: RuleCreate, db: Session = Depends(get_db)):
     return ActionResult(message="已创建规则", data={"id": rule.id})
 
 
-@router.patch("/rules/{rule_id}", response_model=ActionResult, summary="更新规则")
+@router.patch("/rules/{rule_id}", response_model=ActionResult, summary="更新规则", dependencies=[Depends(require_perm("risks", "config"))])
 def update_rule(rule_id: str, body: RuleUpdate, db: Session = Depends(get_db)):
     rule = db.get(RiskRule, rule_id)
     if rule is None:
@@ -353,7 +354,7 @@ def update_rule(rule_id: str, body: RuleUpdate, db: Session = Depends(get_db)):
     return ActionResult(message="已更新", data={"id": rule_id})
 
 
-@router.delete("/rules/{rule_id}", response_model=ActionResult, summary="删除规则")
+@router.delete("/rules/{rule_id}", response_model=ActionResult, summary="删除规则", dependencies=[Depends(require_perm("risks", "config"))])
 def delete_rule(rule_id: str, db: Session = Depends(get_db)):
     rule = db.get(RiskRule, rule_id)
     if rule is None:
@@ -364,7 +365,7 @@ def delete_rule(rule_id: str, db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------- 管理层与投递目标
-@router.get("/layers", summary="管理层与投递目标")
+@router.get("/layers", summary="管理层与投递目标", dependencies=[Depends(require_perm("risks", "view"))])
 def list_layers(db: Session = Depends(get_db)):
     layers = db.execute(select(AlertLayer).order_by(AlertLayer.level)).scalars().all()
     out = []
@@ -382,7 +383,7 @@ def list_layers(db: Session = Depends(get_db)):
     return out
 
 
-@router.post("/layers", response_model=ActionResult, summary="新建管理层")
+@router.post("/layers", response_model=ActionResult, summary="新建管理层", dependencies=[Depends(require_perm("risks", "config"))])
 def create_layer(body: LayerCreate, db: Session = Depends(get_db)):
     exists = db.get(AlertLayer, body.id)
     if exists:
@@ -392,7 +393,7 @@ def create_layer(body: LayerCreate, db: Session = Depends(get_db)):
     return ActionResult(message="已创建管理层", data={"id": body.id})
 
 
-@router.patch("/layers/{layer_id}", response_model=ActionResult, summary="更新管理层")
+@router.patch("/layers/{layer_id}", response_model=ActionResult, summary="更新管理层", dependencies=[Depends(require_perm("risks", "config"))])
 def update_layer(layer_id: str, body: LayerUpdate, db: Session = Depends(get_db)):
     l = db.get(AlertLayer, layer_id)
     if l is None:
@@ -405,7 +406,7 @@ def update_layer(layer_id: str, body: LayerUpdate, db: Session = Depends(get_db)
     return ActionResult(message="已更新")
 
 
-@router.delete("/layers/{layer_id}", response_model=ActionResult, summary="删除管理层")
+@router.delete("/layers/{layer_id}", response_model=ActionResult, summary="删除管理层", dependencies=[Depends(require_perm("risks", "config"))])
 def delete_layer(layer_id: str, db: Session = Depends(get_db)):
     l = db.get(AlertLayer, layer_id)
     if l is None:
@@ -415,7 +416,7 @@ def delete_layer(layer_id: str, db: Session = Depends(get_db)):
     return ActionResult(message="已删除（其投递目标一并删除）")
 
 
-@router.post("/targets", response_model=ActionResult, summary="新建投递目标")
+@router.post("/targets", response_model=ActionResult, summary="新建投递目标", dependencies=[Depends(require_perm("risks", "config"))])
 def create_target(body: TargetCreate, db: Session = Depends(get_db)):
     if body.channel not in ("webhook", "app", "email", "system"):
         raise HTTPException(400, "通道必须是 webhook/app/email/system")
@@ -428,7 +429,7 @@ def create_target(body: TargetCreate, db: Session = Depends(get_db)):
     return ActionResult(message="已创建投递目标", data={"id": t.id})
 
 
-@router.patch("/targets/{target_id}", response_model=ActionResult, summary="更新投递目标")
+@router.patch("/targets/{target_id}", response_model=ActionResult, summary="更新投递目标", dependencies=[Depends(require_perm("risks", "config"))])
 def update_target(target_id: str, body: TargetUpdate, db: Session = Depends(get_db)):
     t = db.get(AlertTarget, target_id)
     if t is None:
@@ -443,7 +444,7 @@ def update_target(target_id: str, body: TargetUpdate, db: Session = Depends(get_
     return ActionResult(message="已更新")
 
 
-@router.delete("/targets/{target_id}", response_model=ActionResult, summary="删除投递目标")
+@router.delete("/targets/{target_id}", response_model=ActionResult, summary="删除投递目标", dependencies=[Depends(require_perm("risks", "config"))])
 def delete_target(target_id: str, db: Session = Depends(get_db)):
     t = db.get(AlertTarget, target_id)
     if t is None:
@@ -453,7 +454,7 @@ def delete_target(target_id: str, db: Session = Depends(get_db)):
     return ActionResult(message="已删除")
 
 
-@router.post("/layers/{layer_id}/test", response_model=ActionResult, summary="测试该层投递")
+@router.post("/layers/{layer_id}/test", response_model=ActionResult, summary="测试该层投递", dependencies=[Depends(require_perm("risks", "config"))])
 def test_layer(layer_id: str, db: Session = Depends(get_db)):
     """用一条虚拟事件测试该层所有启用目标的连通性"""
     l = db.get(AlertLayer, layer_id)

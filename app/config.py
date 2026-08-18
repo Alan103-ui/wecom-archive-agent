@@ -163,6 +163,12 @@ class Settings(BaseSettings):
     SMTP_FROM: str = ""
     SMTP_TLS: bool = True
 
+    # ---------------- 登录认证 / RBAC ----------------
+    # JWT 签名密钥：生产环境务必在 .env 里改为随机长串（改后所有已签发 token 失效）
+    AUTH_SECRET_KEY: str = "wecom-archive-dev-secret-change-me"
+    # 登录态有效期（小时）
+    AUTH_TOKEN_HOURS: int = 12
+
     @property
     def filter_room_id_set(self) -> set[str]:
         return {r.strip() for r in self.FILTER_ROOM_IDS.split(",") if r.strip()}

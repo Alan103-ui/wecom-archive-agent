@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas import ActionResult, Page, RecordOut, RecordUpdate
 from app.db.database import get_db
 from app.models.entities import ExtractedRecord, ExtractTemplate
+from app.services.auth.rbac import require_perm
 
 router = APIRouter()
 
@@ -52,7 +53,7 @@ def _build_conds(
     return conds
 
 
-@router.get("/records", response_model=Page[RecordOut], summary="结构化数据列表")
+@router.get("/records", response_model=Page[RecordOut], summary="结构化数据列表", dependencies=[Depends(require_perm("records", "view"))])
 def list_records(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
@@ -84,7 +85,7 @@ def list_records(
     )
 
 
-@router.get("/records/flatten", summary="按模板展开成宽表")
+@router.get("/records/flatten", summary="按模板展开成宽表", dependencies=[Depends(require_perm("records", "view"))])
 def flatten_records(
     db: Session = Depends(get_db),
     template_name: str = Query(..., description="必须指定模板，不同模板字段不同"),
@@ -175,7 +176,7 @@ def _stringify(value):
     return str(value)
 
 
-@router.get("/records/export", summary="导出 Excel")
+@router.get("/records/export", summary="导出 Excel", dependencies=[Depends(require_perm("records", "export"))])
 def export_records(
     db: Session = Depends(get_db),
     template_name: str = Query(..., description="按模板导出，列即模板字段"),
@@ -255,7 +256,7 @@ def export_records(
     )
 
 
-@router.get("/records/{record_id}", response_model=RecordOut, summary="结构化数据详情")
+@router.get("/records/{record_id}", response_model=RecordOut, summary="结构化数据详情", dependencies=[Depends(require_perm("records", "view"))])
 def get_record(record_id: str, db: Session = Depends(get_db)):
     rec = db.get(ExtractedRecord, record_id)
     if rec is None:
@@ -273,7 +274,7 @@ def get_record(record_id: str, db: Session = Depends(get_db)):
     return out
 
 
-@router.patch("/records/{record_id}", response_model=RecordOut, summary="人工复核/修正字段")
+@router.patch("/records/{record_id}", response_model=RecordOut, summary="人工复核/修正字段", dependencies=[Depends(require_perm("records", "edit"))])
 def update_record(record_id: str, payload: RecordUpdate, db: Session = Depends(get_db)):
     rec = db.get(ExtractedRecord, record_id)
     if rec is None:
@@ -288,7 +289,7 @@ def update_record(record_id: str, payload: RecordUpdate, db: Session = Depends(g
     return RecordOut.model_validate(rec)
 
 
-@router.delete("/records/{record_id}", response_model=ActionResult, summary="删除记录")
+@router.delete("/records/{record_id}", response_model=ActionResult, summary="删除记录", dependencies=[Depends(require_perm("records", "delete"))])
 def delete_record(record_id: str, db: Session = Depends(get_db)):
     rec = db.get(ExtractedRecord, record_id)
     if rec is None:

@@ -350,3 +350,29 @@ a{color:#60a5fa}
 /* ---------- 路由全景：管理层列表 ---------- */
 .layer-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
 .muted{color:var(--muted)}
+
+/* ---------- 登录层 ---------- */
+.login-overlay{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.82);backdrop-filter:blur(4px)}
+.login-overlay.show{display:flex}
+.login-card{width:340px;background:var(--bg2,#111827);border:1px solid var(--line,#1f2937);border-radius:14px;padding:32px 28px;box-shadow:0 20px 60px rgba(0,0,0,.5);text-align:center}
+.login-logo{width:56px;height:56px;margin:0 auto 14px;border-radius:14px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;font-weight:800;font-size:22px;display:flex;align-items:center;justify-content:center}
+.login-card h2{font-size:18px;margin:0 0 6px}
+.login-sub{color:var(--muted);font-size:12px;margin:0 0 20px}
+.login-card input{width:100%;box-sizing:border-box;margin-bottom:12px;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font-size:14px;outline:none}
+.login-card input:focus{border-color:#3b82f6}
+.login-err{color:#f87171;font-size:12px;min-height:18px;margin-bottom:6px}
+.btn-block{width:100%;padding:10px;font-size:15px}
+.login-hint{color:var(--muted);font-size:11px;line-height:1.7;margin:16px 0 0}
+#userPill{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);color:#60a5fa}
+
+/* ---------- 权限树（角色编辑） ---------- */
+.perm-tree{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-top:8px}
+.perm-group{border:1px solid var(--line);border-radius:10px;padding:12px}
+.perm-group h4{margin:0 0 8px;font-size:13px;color:#60a5fa;display:flex;align-items:center;gap:6px}
+.perm-item{display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0;color:var(--fg)}
+.perm-item input{accent-color:#3b82f6}
+
+/* ---------- 管理表格 ---------- */
+.admin-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.admin-bar h3{margin:0}
+.pill-user{font-size:11px}

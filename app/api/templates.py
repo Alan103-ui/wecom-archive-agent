@@ -20,11 +20,12 @@ from app.api.schemas import (
 from app.db.database import get_db
 from app.models.entities import ExtractedRecord, ExtractTemplate
 from app.services.extract import extractor, templates as tpl_service
+from app.services.auth.rbac import require_perm
 
 router = APIRouter()
 
 
-@router.get("/templates", response_model=list[TemplateOut], summary="模板列表")
+@router.get("/templates", response_model=list[TemplateOut], summary="模板列表", dependencies=[Depends(require_perm("templates", "view"))])
 def list_templates(db: Session = Depends(get_db), enabled_only: bool = False):
     stmt = select(ExtractTemplate)
     if enabled_only:
@@ -33,7 +34,7 @@ def list_templates(db: Session = Depends(get_db), enabled_only: bool = False):
     return [TemplateOut.model_validate(r) for r in rows]
 
 
-@router.post("/templates", response_model=TemplateOut, summary="新建模板")
+@router.post("/templates", response_model=TemplateOut, summary="新建模板", dependencies=[Depends(require_perm("templates", "add"))])
 def create_template(payload: TemplateCreate, db: Session = Depends(get_db)):
     data = payload.model_dump()
     data["fields_schema"] = [f for f in data.get("fields_schema") or []]
@@ -51,7 +52,7 @@ def create_template(payload: TemplateCreate, db: Session = Depends(get_db)):
     return TemplateOut.model_validate(tpl)
 
 
-@router.get("/templates/{template_id}", response_model=TemplateOut, summary="模板详情")
+@router.get("/templates/{template_id}", response_model=TemplateOut, summary="模板详情", dependencies=[Depends(require_perm("templates", "view"))])
 def get_template(template_id: str, db: Session = Depends(get_db)):
     tpl = db.get(ExtractTemplate, template_id)
     if tpl is None:
@@ -59,7 +60,7 @@ def get_template(template_id: str, db: Session = Depends(get_db)):
     return TemplateOut.model_validate(tpl)
 
 
-@router.patch("/templates/{template_id}", response_model=TemplateOut, summary="修改模板")
+@router.patch("/templates/{template_id}", response_model=TemplateOut, summary="修改模板", dependencies=[Depends(require_perm("templates", "edit"))])
 def update_template(template_id: str, payload: TemplateUpdate, db: Session = Depends(get_db)):
     tpl = db.get(ExtractTemplate, template_id)
     if tpl is None:
@@ -84,7 +85,7 @@ def update_template(template_id: str, payload: TemplateUpdate, db: Session = Dep
     return TemplateOut.model_validate(tpl)
 
 
-@router.delete("/templates/{template_id}", response_model=ActionResult, summary="删除模板")
+@router.delete("/templates/{template_id}", response_model=ActionResult, summary="删除模板", dependencies=[Depends(require_perm("templates", "delete"))])
 def delete_template(template_id: str, db: Session = Depends(get_db)):
     tpl = db.get(ExtractTemplate, template_id)
     if tpl is None:
@@ -104,13 +105,13 @@ def delete_template(template_id: str, db: Session = Depends(get_db)):
     return ActionResult(message="已删除")
 
 
-@router.post("/templates/seed", response_model=ActionResult, summary="重新播种默认模板")
+@router.post("/templates/seed", response_model=ActionResult, summary="重新播种默认模板", dependencies=[Depends(require_perm("templates", "edit"))])
 def seed_default_templates(db: Session = Depends(get_db)):
     added = tpl_service.seed_templates(db)
     return ActionResult(message=f"新增 {added} 个默认模板", data={"added": added})
 
 
-@router.post("/templates/try-run", summary="在线调试：贴一段文本试抽")
+@router.post("/templates/try-run", summary="在线调试：贴一段文本试抽", dependencies=[Depends(require_perm("templates", "view"))])
 def try_run(payload: TemplateTryRun, db: Session = Depends(get_db)):
     """
     不传 template_id 时走自动匹配，可用来验证关键词配得对不对。

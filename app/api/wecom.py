@@ -18,6 +18,7 @@ from app.db.database import get_db
 from app.models.entities import ChatRoom
 from app.services import wecom_api
 from app.services.contact_resolver import resolve_names
+from app.services.auth.rbac import require_perm
 
 router = APIRouter()
 
@@ -27,7 +28,7 @@ class SingleAgreeIn(BaseModel):
     userid: str = ""
 
 
-@router.get("/groupchat/{room_id}", summary="从企业微信拉取群信息并写回群档案")
+@router.get("/groupchat/{room_id}", summary="从企业微信拉取群信息并写回群档案", dependencies=[Depends(require_perm("wecom", "view"))])
 def groupchat(room_id: str, db: Session = Depends(get_db)):
     try:
         info = wecom_api.get_group_chat(room_id)
@@ -63,7 +64,7 @@ def groupchat(room_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/permit-users", summary="拉取已开启会话内容存档的成员列表")
+@router.get("/permit-users", summary="拉取已开启会话内容存档的成员列表", dependencies=[Depends(require_perm("wecom", "view"))])
 def permit_users():
     try:
         d = wecom_api.get_permit_user_list()
@@ -72,7 +73,7 @@ def permit_users():
     return {"ok": True, "count": d["count"], "userlist": d["userlist"]}
 
 
-@router.post("/single-agree", summary="查询单聊会话存档同意情况")
+@router.post("/single-agree", summary="查询单聊会话存档同意情况", dependencies=[Depends(require_perm("wecom", "operate"))])
 def single_agree(body: SingleAgreeIn):
     try:
         d = wecom_api.check_single_agree(body.roomids, body.userid)
@@ -81,7 +82,7 @@ def single_agree(body: SingleAgreeIn):
     return {"ok": True, "count": d["count"], "agree_status": d["agree_status"]}
 
 
-@router.get("/quit-list", summary="拉取已离职需转接会话的成员列表")
+@router.get("/quit-list", summary="拉取已离职需转接会话的成员列表", dependencies=[Depends(require_perm("wecom", "view"))])
 def quit_list():
     try:
         d = wecom_api.get_quit_list()
@@ -90,7 +91,7 @@ def quit_list():
     return {"ok": True, "count": d["count"], "ids": d["ids"]}
 
 
-@router.get("/external-contacts", summary="批量解析外部联系人姓名（externalcontact/get 缓存）")
+@router.get("/external-contacts", summary="批量解析外部联系人姓名（externalcontact/get 缓存）", dependencies=[Depends(require_perm("wecom", "view"))])
 def external_contacts(ids: str = "", db: Session = Depends(get_db)):
     """把一批 userid 中的外部联系人（wo/wm 开头）解析为可读姓名。
 
@@ -107,7 +108,7 @@ def external_contacts(ids: str = "", db: Session = Depends(get_db)):
     return {"ok": True, "names": names}
 
 
-@router.get("/external-groupchat/{room_id}", summary="拉取外部群(客户群)信息并写回群档案")
+@router.get("/external-groupchat/{room_id}", summary="拉取外部群(客户群)信息并写回群档案", dependencies=[Depends(require_perm("wecom", "view"))])
 def external_groupchat(room_id: str, db: Session = Depends(get_db),
                        customer_contact_secret: str = ""):
     """外部群（客户群）与内部群不同：群信息走 externalcontact/groupchat/get，
@@ -156,7 +157,7 @@ class TransferIn(BaseModel):
     takeover_userid: str = ""
 
 
-@router.post("/transfer", summary="离职成员会话内容存档转接(实际移交)")
+@router.post("/transfer", summary="离职成员会话内容存档转接(实际移交)", dependencies=[Depends(require_perm("wecom", "operate"))])
 def transfer(body: TransferIn):
     """把离职成员的会话内容存档实际移交给接管成员（msgaudit/transfer）。"""
     try:

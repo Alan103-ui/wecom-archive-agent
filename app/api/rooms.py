@@ -16,6 +16,7 @@ from app.db.database import get_db
 from app.models.entities import ChatRoom, ChatMessage, Attachment, ExtractedRecord
 from app.models.risk import RiskEvent
 from app.config import settings
+from app.services.auth.rbac import require_perm
 
 from pathlib import Path
 from sqlalchemy import delete as sa_delete
@@ -90,7 +91,7 @@ def _get_or_404(db: Session, room_id: str) -> ChatRoom:
     return room
 
 
-@router.get("", response_model=list[ChatRoomOut], summary="列出所有群")
+@router.get("", response_model=list[ChatRoomOut], summary="列出所有群", dependencies=[Depends(require_perm("rooms", "view"))])
 def list_rooms(db: Session = Depends(get_db)):
     rows = db.execute(
         select(ChatRoom).order_by(ChatRoom.name, ChatRoom.room_id)
@@ -98,12 +99,12 @@ def list_rooms(db: Session = Depends(get_db)):
     return [ChatRoomOut.from_room(r) for r in rows]
 
 
-@router.get("/{room_id}", response_model=ChatRoomOut, summary="群详情")
+@router.get("/{room_id}", response_model=ChatRoomOut, summary="群详情", dependencies=[Depends(require_perm("rooms", "view"))])
 def get_room(room_id: str, db: Session = Depends(get_db)):
     return ChatRoomOut.from_room(_get_or_404(db, room_id))
 
 
-@router.patch("/{room_id}", response_model=ChatRoomOut, summary="更新群（采集开关 / 备注名）")
+@router.patch("/{room_id}", response_model=ChatRoomOut, summary="更新群（采集开关 / 备注名）", dependencies=[Depends(require_perm("rooms", "edit"))])
 def patch_room(room_id: str, body: RoomPatch, db: Session = Depends(get_db)):
     room = _get_or_404(db, room_id)
     if body.enabled is not None:
@@ -114,7 +115,7 @@ def patch_room(room_id: str, body: RoomPatch, db: Session = Depends(get_db)):
     return ChatRoomOut.from_room(room)
 
 
-@router.post("/batch-toggle", summary="批量设置采集开关（全部群或指定群）")
+@router.post("/batch-toggle", summary="批量设置采集开关（全部群或指定群）", dependencies=[Depends(require_perm("rooms", "edit"))])
 def batch_toggle(body: BatchToggle, db: Session = Depends(get_db)):
     stmt = select(ChatRoom)
     if body.room_ids:
@@ -126,7 +127,7 @@ def batch_toggle(body: BatchToggle, db: Session = Depends(get_db)):
     return {"updated": len(rooms), "enabled": body.enabled}
 
 
-@router.delete("/{room_id}", response_model=DeleteRoomResult, summary="删除群及其全部存档数据")
+@router.delete("/{room_id}", response_model=DeleteRoomResult, summary="删除群及其全部存档数据", dependencies=[Depends(require_perm("rooms", "delete"))])
 def delete_room(room_id: str, db: Session = Depends(get_db)):
     """删除群：连带清除该群所有已存档消息、附件、风险事件（及投递回执）与结构化记录，
     并删除本地媒体目录。操作不可逆，前端需二次确认。

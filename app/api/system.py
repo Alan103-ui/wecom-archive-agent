@@ -24,12 +24,13 @@ from app.models.model_config import ModelConfig
 from app.services import pipeline
 from app.services.extract import llm
 from app.services.ocr import engine as ocr_engine
+from app.services.auth.rbac import require_perm
 from app import scheduler as scheduler_mod
 
 router = APIRouter()
 
 
-@router.get("/health", response_model=HealthOut, summary="健康检查")
+@router.get("/health", response_model=HealthOut, summary="健康检查", dependencies=[Depends(require_perm("system", "view"))])
 def health(db: Session = Depends(get_db)):
     # 数据库
     try:
@@ -105,7 +106,7 @@ def health(db: Session = Depends(get_db)):
     )
 
 
-@router.get("/stats", summary="统计看板")
+@router.get("/stats", summary="统计看板", dependencies=[Depends(require_perm("system", "view"))])
 def stats(db: Session = Depends(get_db)):
     def _count(model) -> int:
         return db.execute(select(func.count()).select_from(model)).scalar_one()
@@ -148,7 +149,7 @@ def stats(db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------- 手动触发
-@router.post("/sync", response_model=ActionResult, summary="手动触发一次增量拉取")
+@router.post("/sync", response_model=ActionResult, summary="手动触发一次增量拉取", dependencies=[Depends(require_perm("system", "operate"))])
 def trigger_sync(
     background: BackgroundTasks,
     wait: bool = Query(True, description="true=同步等待结果；false=后台跑立即返回"),
@@ -161,7 +162,7 @@ def trigger_sync(
     return ActionResult(message="已在后台开始同步")
 
 
-@router.post("/pipeline/run", response_model=ActionResult, summary="手动触发一轮附件处理")
+@router.post("/pipeline/run", response_model=ActionResult, summary="手动触发一轮附件处理", dependencies=[Depends(require_perm("system", "operate"))])
 def trigger_pipeline(
     background: BackgroundTasks,
     wait: bool = Query(False, description="OCR+LLM 较慢，默认后台执行"),
@@ -174,19 +175,19 @@ def trigger_pipeline(
     return ActionResult(message="已在后台开始处理")
 
 
-@router.post("/pipeline/reset-failed", response_model=ActionResult, summary="重置所有失败项")
+@router.post("/pipeline/reset-failed", response_model=ActionResult, summary="重置所有失败项", dependencies=[Depends(require_perm("system", "operate"))])
 def reset_failed(db: Session = Depends(get_db)):
     n = pipeline.reset_failed(db)
     return ActionResult(message=f"已重置 {n} 个失败附件", data={"count": n})
 
 
 # ---------------------------------------------------------------- 游标
-@router.get("/cursor", response_model=CursorOut, summary="查看同步游标")
+@router.get("/cursor", response_model=CursorOut, summary="查看同步游标", dependencies=[Depends(require_perm("system", "view"))])
 def get_cursor(db: Session = Depends(get_db)):
     return CursorOut.model_validate(pipeline.get_cursor(db))
 
 
-@router.post("/cursor", response_model=CursorOut, summary="重设游标（危险）")
+@router.post("/cursor", response_model=CursorOut, summary="重设游标（危险）", dependencies=[Depends(require_perm("system", "operate"))])
 def set_cursor(
     db: Session = Depends(get_db),
     seq: int = Query(..., ge=0, description="设为 0 表示从最早可用记录重新拉"),
@@ -208,12 +209,12 @@ def set_cursor(
 
 
 # ---------------------------------------------------------------- 调度与采集器
-@router.get("/scheduler", summary="调度器状态")
+@router.get("/scheduler", summary="调度器状态", dependencies=[Depends(require_perm("system", "view"))])
 def scheduler_status():
     return scheduler_mod.scheduler_status()
 
 
-@router.post("/scheduler/{action}", response_model=ActionResult, summary="暂停/恢复调度")
+@router.post("/scheduler/{action}", response_model=ActionResult, summary="暂停/恢复调度", dependencies=[Depends(require_perm("system", "operate"))])
 def scheduler_control(action: str):
     if action == "pause":
         ok = scheduler_mod.pause_all()
@@ -226,7 +227,7 @@ def scheduler_control(action: str):
     return ActionResult(message=f"调度器已{'暂停' if action == 'pause' else '恢复'}")
 
 
-@router.post("/collector/reload", response_model=ActionResult, summary="重载采集器")
+@router.post("/collector/reload", response_model=ActionResult, summary="重载采集器", dependencies=[Depends(require_perm("system", "operate"))])
 def reload_collector():
     """改了 .env 里的 SDK 路径/密钥后，不重启进程即可生效"""
     reset_collector()
@@ -237,7 +238,7 @@ def reload_collector():
     return ActionResult(ok=ok, message=detail, data={"mode": settings.COLLECTOR_MODE})
 
 
-@router.get("/config", summary="查看当前生效配置（脱敏）")
+@router.get("/config", summary="查看当前生效配置（脱敏）", dependencies=[Depends(require_perm("system", "view"))])
 def view_config():
     def _mask(v: str) -> str:
         if not v:

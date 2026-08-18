@@ -21,11 +21,12 @@ from app.config import settings
 from app.db.database import get_db
 from app.models.entities import Attachment, OcrResult
 from app.services import pipeline
+from app.services.auth.rbac import require_perm
 
 router = APIRouter()
 
 
-@router.get("/attachments", response_model=Page[AttachmentOut], summary="附件列表")
+@router.get("/attachments", response_model=Page[AttachmentOut], summary="附件列表", dependencies=[Depends(require_perm("attachments", "view"))])
 def list_attachments(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
@@ -72,7 +73,7 @@ def list_attachments(
     )
 
 
-@router.get("/attachments/{attachment_id}", response_model=AttachmentOut, summary="附件详情")
+@router.get("/attachments/{attachment_id}", response_model=AttachmentOut, summary="附件详情", dependencies=[Depends(require_perm("attachments", "view"))])
 def get_attachment(attachment_id: str, db: Session = Depends(get_db)):
     att = db.get(Attachment, attachment_id)
     if att is None:
@@ -84,6 +85,7 @@ def get_attachment(attachment_id: str, db: Session = Depends(get_db)):
     "/attachments/{attachment_id}/ocr",
     response_model=OcrResultDetail,
     summary="附件最新 OCR 结果（含坐标块）",
+    dependencies=[Depends(require_perm("attachments", "view"))],
 )
 def get_attachment_ocr(attachment_id: str, db: Session = Depends(get_db)):
     row = db.execute(
@@ -97,7 +99,7 @@ def get_attachment_ocr(attachment_id: str, db: Session = Depends(get_db)):
     return OcrResultDetail.model_validate(row)
 
 
-@router.get("/attachments/{attachment_id}/file", summary="下载/预览原文件")
+@router.get("/attachments/{attachment_id}/file", summary="下载/预览原文件", dependencies=[Depends(require_perm("attachments", "view"))])
 def download_attachment(attachment_id: str, db: Session = Depends(get_db)):
     att = db.get(Attachment, attachment_id)
     if att is None:
@@ -117,7 +119,8 @@ def download_attachment(attachment_id: str, db: Session = Depends(get_db)):
 
 
 @router.post(
-    "/attachments/{attachment_id}/retry", response_model=ActionResult, summary="重跑附件"
+    "/attachments/{attachment_id}/retry", response_model=ActionResult, summary="重跑附件",
+    dependencies=[Depends(require_perm("attachments", "operate"))],
 )
 def retry_attachment(
     attachment_id: str,
@@ -130,7 +133,7 @@ def retry_attachment(
     return ActionResult(message=f"已重置 {stage} 阶段，等待下一轮流水线处理")
 
 
-@router.get("/ocr-results", response_model=Page[OcrResultOut], summary="OCR 结果列表")
+@router.get("/ocr-results", response_model=Page[OcrResultOut], summary="OCR 结果列表", dependencies=[Depends(require_perm("attachments", "view"))])
 def list_ocr_results(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),

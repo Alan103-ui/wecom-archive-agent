@@ -22,6 +22,7 @@ from app.services.extract.compare import (
 )
 from app.services.kv_store import get_setting, set_setting
 from app.services.llm.client import get_model_for_role
+from app.services.auth.rbac import require_perm
 
 router = APIRouter()
 
@@ -39,7 +40,7 @@ class CompareIn(BaseModel):
     sample_size: int = 5
 
 
-@router.get("/modes", summary="当前抽取模式与视觉模型状态")
+@router.get("/modes", summary="当前抽取模式与视觉模型状态", dependencies=[Depends(require_perm("extract", "view"))])
 def get_modes():
     mode = get_setting(EXTRACT_MODE_KEY, MODE_OCR_LLM)
     vision_cfg = get_model_for_role(ROLE_EXTRACT_VISION, fallback=False)
@@ -59,7 +60,7 @@ def get_modes():
     }
 
 
-@router.post("/set-mode", summary="切换抽取模式（实验开关）")
+@router.post("/set-mode", summary="切换抽取模式（实验开关）", dependencies=[Depends(require_perm("extract", "operate"))])
 def set_mode(body: SetModeIn):
     if body.mode not in (MODE_OCR_LLM, MODE_VISION):
         from fastapi import HTTPException
@@ -73,7 +74,7 @@ def set_mode(body: SetModeIn):
     return {"message": f"抽取模式已切换为 {body.mode}", "mode": body.mode}
 
 
-@router.post("/compare", summary="两条抽取路线对比实验")
+@router.post("/compare", summary="两条抽取路线对比实验", dependencies=[Depends(require_perm("extract", "view"))])
 def run_compare(body: CompareIn, db: Session = Depends(get_db)):
     result = compare_svc.compare_routes(
         db,

@@ -15,17 +15,18 @@ from sqlalchemy import select
 from app.api.schemas import ActionResult
 from app.db.database import get_db
 from app.models.kv import KVSetting
+from app.services.auth.rbac import require_perm
 
 router = APIRouter()
 
 
-@router.get("", summary="读取全部键值设置")
+@router.get("", summary="读取全部键值设置", dependencies=[Depends(require_perm("settings", "view"))])
 def get_settings(db=Depends(get_db)):  # noqa: B008
     rows = db.execute(select(KVSetting)).scalars().all()
     return {r.key: r.value_json for r in rows}
 
 
-@router.put("", summary="批量写入键值设置")
+@router.put("", summary="批量写入键值设置", dependencies=[Depends(require_perm("settings", "edit"))])
 def put_settings(
     body: dict[str, Any] = Body(...),
     db=Depends(get_db),  # noqa: B008

@@ -19,11 +19,12 @@ from app.api.schemas import (
 from app.db.database import get_db
 from app.models.entities import ChatMessage, ChatRoom
 from app.models.risk import RiskEvent
+from app.services.auth.rbac import require_perm
 
 router = APIRouter()
 
 
-@router.get("/messages", response_model=Page[MessageOut], summary="消息列表")
+@router.get("/messages", response_model=Page[MessageOut], summary="消息列表", dependencies=[Depends(require_perm("messages", "view"))])
 def list_messages(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
@@ -75,7 +76,7 @@ def list_messages(
     )
 
 
-@router.get("/messages/{message_id}", response_model=MessageDetail, summary="消息详情")
+@router.get("/messages/{message_id}", response_model=MessageDetail, summary="消息详情", dependencies=[Depends(require_perm("messages", "view"))])
 def get_message(message_id: str, db: Session = Depends(get_db)):
     msg = db.execute(
         select(ChatMessage)
@@ -87,7 +88,7 @@ def get_message(message_id: str, db: Session = Depends(get_db)):
     return MessageDetail.model_validate(msg)
 
 
-@router.get("/rooms", response_model=list[RoomOut], summary="群列表")
+@router.get("/rooms", response_model=list[RoomOut], summary="群列表", dependencies=[Depends(require_perm("rooms", "view"))])
 def list_rooms(db: Session = Depends(get_db)):
     rows = (
         db.execute(select(ChatRoom).order_by(ChatRoom.last_msg_at.desc().nullslast()))
@@ -97,7 +98,7 @@ def list_rooms(db: Session = Depends(get_db)):
     return [RoomOut.model_validate(r) for r in rows]
 
 
-@router.patch("/rooms/{room_id}", response_model=RoomOut, summary="更新群备注/开关")
+@router.patch("/rooms/{room_id}", response_model=RoomOut, summary="更新群备注/开关", dependencies=[Depends(require_perm("rooms", "edit"))])
 def update_room(room_id: str, payload: RoomUpdate, db: Session = Depends(get_db)):
     room = db.get(ChatRoom, room_id)
     if room is None:
@@ -110,7 +111,7 @@ def update_room(room_id: str, payload: RoomUpdate, db: Session = Depends(get_db)
     return RoomOut.model_validate(room)
 
 
-@router.delete("/messages/{message_id}", summary="删除一条消息（连带附件，风险事件保留但解除关联）")
+@router.delete("/messages/{message_id}", summary="删除一条消息（连带附件，风险事件保留但解除关联）", dependencies=[Depends(require_perm("messages", "delete"))])
 def delete_message(message_id: str, db: Session = Depends(get_db)):
     """删除单条消息：其附件随外键级联删除；关联的风险事件保留（message_id 置空，仍可按群追溯）。"""
     msg = db.get(ChatMessage, message_id)

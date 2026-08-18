@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-17-6';
+const APP_JS_VERSION = '2026-08-18-1';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -28,11 +28,18 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 else markJsVersion();
 
 /* ---------------- 基础工具 ---------------- */
+const LS_TOKEN = 'wa_token';
+const LS_USER = 'wa_user';
+
 async function req(path, opts = {}) {
-  const res = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  const token = localStorage.getItem(LS_TOKEN);
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(API + path, { ...opts, headers });
+  if (res.status === 401) {
+    sessionExpired();
+    throw new Error('登录已过期，请重新登录');
+  }
   if (!res.ok) {
     let msg = res.statusText;
     try { const j = await res.json(); msg = j.detail || msg; } catch (e) { /* 非 JSON 响应 */ }
@@ -40,6 +47,157 @@ async function req(path, opts = {}) {
   }
   return res.status === 204 ? null : res.json();
 }
+
+/* ---------------- 登录认证与权限 ---------------- */
+let AUTH_USER = null;
+
+function loadAuth() {
+  try { AUTH_USER = JSON.parse(localStorage.getItem(LS_USER) || 'null'); } catch (e) { AUTH_USER = null; }
+  return AUTH_USER;
+}
+
+function saveAuth(user, token) {
+  AUTH_USER = user;
+  localStorage.setItem(LS_TOKEN, token || '');
+  localStorage.setItem(LS_USER, JSON.stringify(user || null));
+}
+
+/** 是否拥有某权限码，如 hasPerm('records:delete')；超管恒为 true */
+function hasPerm(code) {
+  if (!AUTH_USER) return false;
+  if (AUTH_USER.is_super) return true;
+  return (AUTH_USER.perms || []).includes(code);
+}
+
+function showLogin() {
+  const ov = $('#loginOverlay');
+  if (!ov) return;
+  ov.classList.add('show');
+  $('#loginErr').textContent = '';
+  setTimeout(() => { $('#loginUser').focus(); }, 60);
+}
+function hideLogin() { const ov = $('#loginOverlay'); if (ov) ov.classList.remove('show'); }
+
+async function doLogin() {
+  const u = $('#loginUser').value.trim();
+  const p = $('#loginPass').value;
+  const err = $('#loginErr');
+  err.textContent = '';
+  if (!u || !p) { err.textContent = '请输入用户名和密码'; return; }
+  try {
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, password: p }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.detail || '登录失败');
+    saveAuth(j.user, j.token);
+    hideLogin();
+    applyAuthUI();
+    refreshModePill();
+    const active = document.querySelector('.tab.active');
+    const loader = MAIN_LOADERS[active && active.dataset.view];
+    (loader || loadDashboard)();
+  } catch (e) { err.textContent = e.message; }
+}
+
+function logout() {
+  saveAuth(null, '');
+  applyAuthUI();
+  showLogin();
+}
+
+function sessionExpired() {
+  saveAuth(null, '');
+  applyAuthUI();
+  showLogin();
+}
+
+/** 顶栏用户信息 + 页签/子页签可见性 + 按钮权限门 */
+function applyAuthUI() {
+  const logged = !!AUTH_USER;
+  const up = $('#userPill');
+  if (up) {
+    up.style.display = logged ? '' : 'none';
+    if (logged) up.textContent = '👤 ' + (AUTH_USER.display_name || AUTH_USER.username) + (AUTH_USER.is_super ? '（超管）' : '');
+  }
+  $('#btnLogout').style.display = logged ? '' : 'none';
+  $('#btnChangePwd').style.display = logged ? '' : 'none';
+  gateTabs();
+  gateSubtabs();
+  applyPermGates();
+}
+
+const CFG_VIEW_MODULES = ['templates', 'models', 'wecom', 'delivery', 'settings', 'extract', 'system'];
+const ADMIN_MODULES = ['users', 'roles', 'permissions'];
+const hasAnyView = (mods) => mods.some((m) => hasPerm(m + ':view'));
+
+function gateTabs() {
+  const showMap = {
+    dashboard: hasPerm('dashboard:view'),
+    rooms: hasPerm('rooms:view'),
+    risks: hasPerm('risks:view'),
+    data: hasAnyView(['records', 'attachments', 'messages']),
+    config: hasAnyView(CFG_VIEW_MODULES),
+    admin: hasAnyView(ADMIN_MODULES),
+  };
+  $$('.tab').forEach((t) => { t.style.display = showMap[t.dataset.view] ? '' : 'none'; });
+  // 若当前激活页签被隐藏，跳到第一个可见页签
+  const active = document.querySelector('.tab.active');
+  if (active && active.style.display === 'none') {
+    const first = $$('.tab').find((x) => x.style.display !== 'none');
+    if (first) first.click();
+  }
+}
+
+const SUBTAB_PERMS = {
+  'risk-events': 'risks:view', 'risk-routing': 'risks:view', 'risk-config': 'risks:config',
+  'risk-delivery': 'risks:view', 'risk-ocr-vision': 'risks:view',
+  'data-records': 'records:view', 'data-attachments': 'attachments:view', 'data-messages': 'messages:view',
+  'cfg-templates': 'templates:view', 'cfg-models': 'models:view', 'cfg-extract-compare': 'extract:view',
+  'cfg-system': 'system:view', 'cfg-wecom': 'wecom:view', 'cfg-settings': 'settings:view',
+  'admin-users': 'users:view', 'admin-roles': 'roles:view', 'admin-perms': 'permissions:view',
+};
+
+function gateSubtabs() {
+  $$('.subtab').forEach((b) => {
+    const need = SUBTAB_PERMS[b.dataset.sub];
+    b.style.display = (!need || hasPerm(need)) ? '' : 'none';
+  });
+  // 当前激活子页签被隐藏 → 切到第一个可见子页签
+  $$('.view').forEach((v) => {
+    const active = v.querySelector('.subtab.active');
+    if (active && active.style.display === 'none') {
+      const first = Array.from(v.querySelectorAll('.subtab')).find((x) => x.style.display !== 'none');
+      if (first) first.click();
+    }
+  });
+}
+
+/** 按钮级权限：扫描 [data-perm] 与内置 ID 映射，无权限则隐藏 */
+const ID_PERM_MAP = {
+  btnSync: 'system:operate', btnRun: 'system:operate', btnTestModels: 'models:operate',
+  btnPause: 'system:operate', btnResume: 'system:operate', btnReloadCollector: 'system:operate',
+  smtpSave: 'delivery:edit', smtpTest: 'delivery:operate',
+  appSave: 'delivery:edit', appTest: 'delivery:operate', whTest: 'delivery:operate',
+  recExport: 'records:export',
+};
+function applyPermGates() {
+  $$('[data-perm]').forEach((el) => { el.style.display = hasPerm(el.dataset.perm) ? '' : 'none'; });
+  Object.entries(ID_PERM_MAP).forEach(([id, code]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = hasPerm(code) ? '' : 'none';
+  });
+}
+
+async function refreshModePill() {
+  try {
+    const cfg = await req('/system/config');
+    $('#modePill').textContent = '采集模式：' + (cfg.collector_mode === 'mock' ? 'mock（演示）' : 'archive（会话存档）');
+  } catch (e) { $('#modePill').textContent = '采集模式 —'; }
+}
+
+/* ---------------- 群名称解析（rows 里只带 room_id，前端按缓存 map 反查名称） ---------------- */
 
 let toastTimer = null;
 function toast(msg, type = '') {
@@ -152,6 +310,12 @@ const MAIN_LOADERS = {
     const loader = SUB_LOADERS[active && active.dataset.sub];
     (loader || loadTemplates)();
   },
+  admin: () => {
+    const v = document.getElementById('view-admin');
+    const active = v && v.querySelector('.subtab.active');
+    const loader = SUB_LOADERS[active && active.dataset.sub];
+    (loader || loadUsers)();
+  },
 };
 
 function resetSubtabs(viewEl) {
@@ -173,6 +337,8 @@ $$('.tab').forEach((t) => {
     resetSubtabs(v);
     const loader = MAIN_LOADERS[t.dataset.view];
     loader && loader();
+    gateSubtabs();
+    applyPermGates();
   };
 });
 
@@ -192,6 +358,9 @@ const SUB_LOADERS = {
   'cfg-system': loadSystem,
   'cfg-wecom': loadWeComConfig,
   'cfg-settings': loadSysSettings,
+  'admin-users': loadUsers,
+  'admin-roles': loadRoles,
+  'admin-perms': loadPermCatalog,
 };
 function bindSubtabs() {
   $$('.view').forEach((v) => {
@@ -225,7 +394,7 @@ function renderRoomCards(el, rooms, rules, byRoom) {
     return `<div class="room-card" onclick="openRoom('${esc(r.room_id)}')">
       <div class="room-head">
         <span class="room-name">${esc(r.name || r.room_id)}</span>
-        <label class="switch" title="采集开关" onclick="event.stopPropagation()">
+        <label class="switch" data-perm="rooms:edit" title="采集开关" onclick="event.stopPropagation()">
           <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleRoom('${esc(r.room_id)}', this.checked)">
           <span class="slider"></span>
         </label>
@@ -625,7 +794,7 @@ async function loadRecords(page = 1) {
             <td>${fmtTime(r.__biz_time)}</td><td>${esc(roomName(r.__room_id))}</td>
             ${d.columns.map((c) => `<td class="wrap">${esc(r[c.key] ?? '')}</td>`).join('')}
             <td>${r.__confidence != null ? (r.__confidence * 100).toFixed(0) + '%' : '-'}</td>
-            <td><button class="btn btn-sm" onclick="showRecord('${r.__id}')">详情</button> <button class="btn btn-sm btn-warn" onclick="delRecord('${r.__id}')">删除</button></td>
+            <td><button class="btn btn-sm" onclick="showRecord('${r.__id}')">详情</button> <button class="btn btn-sm btn-warn" data-perm="records:delete" onclick="delRecord('${r.__id}')">删除</button></td>
           </tr>`).join('')}</tbody></table>`;
       renderPager('#recPager', d.total, page, 30, loadRecords);
     } else {
@@ -643,7 +812,7 @@ async function loadRecords(page = 1) {
             <td class="wrap">${esc(JSON.stringify(r.fields_json || {}).slice(0, 160))}</td>
             <td>${r.confidence != null ? (r.confidence * 100).toFixed(0) + '%' : '-'}</td>
             <td>${r.reviewed ? '✓' : ''}</td>
-            <td><button class="btn btn-sm" onclick="showRecord('${r.id}')">详情</button> <button class="btn btn-sm btn-warn" onclick="delRecord('${r.id}')">删除</button></td>
+            <td><button class="btn btn-sm" onclick="showRecord('${r.id}')">详情</button> <button class="btn btn-sm btn-warn" data-perm="records:delete" onclick="delRecord('${r.id}')">删除</button></td>
           </tr>`).join('')}</tbody></table>`;
       renderPager('#recPager', d.total, page, 20, loadRecords);
     }
@@ -754,9 +923,9 @@ window.showRecord = async function (id) {
     <h4>字段（可直接修改后保存，视为已复核）</h4>
     ${bodyHtml || '<div class="empty">无字段</div>'}
     <div class="row-btns">
-      <button class="btn btn-primary btn-sm" id="drSaveRec">保存修正</button>
+      <button class="btn btn-primary btn-sm" id="drSaveRec" data-perm="records:edit">保存修正</button>
       ${r.attachment_id ? `<button class="btn btn-sm" onclick="showAttachment('${r.attachment_id}')">查看来源附件</button>` : ''}
-      <button class="btn btn-sm btn-warn" onclick="delRecord('${r.id}')">删除</button>
+      <button class="btn btn-sm btn-warn" data-perm="records:delete" onclick="delRecord('${r.id}')">删除</button>
     </div>
     <h4>原始 JSON</h4><pre class="code">${esc(JSON.stringify(fields, null, 2))}</pre>`);
 
@@ -807,7 +976,7 @@ async function loadAttachments(page = 1) {
         <td>${fmtTime(a.created_at)}</td>
         <td>
           <button class="btn btn-sm" onclick="showAttachment('${a.id}')">详情</button>
-          <button class="btn btn-sm" onclick="retryAtt('${a.id}')">重跑</button>
+          <button class="btn btn-sm" data-perm="attachments:operate" onclick="retryAtt('${a.id}')">重跑</button>
         </td></tr>`).join('')
       : '<tr><td colspan="9" class="empty">暂无附件</td></tr>';
     renderPager('#attPager', d.total, page, 20, loadAttachments);
@@ -937,7 +1106,7 @@ window.showMessage = async function (id) {
         <span>${esc(a.file_name || a.media_type)} · ${fmtSize(a.file_size)}</span>
         <span>${tag(a.ocr_status)} <button class="btn btn-sm" onclick="showAttachment('${a.id}')">查看</button></span>
       </div>`).join('') || '<div class="dist-item"><span>无</span></div>'}
-    <div class="row-btns"><button class="btn btn-sm btn-warn" onclick="delMessage('${m.id}')">删除该消息</button></div>
+    <div class="row-btns"><button class="btn btn-sm btn-warn" data-perm="messages:delete" onclick="delMessage('${m.id}')">删除该消息</button></div>
     <h4>原始 JSON</h4><pre class="code">${esc(JSON.stringify(m.raw_json || {}, null, 2))}</pre>`);
 };
 
@@ -969,11 +1138,12 @@ async function loadTemplates() {
         <div class="kw">${(t.match_keywords || []).map((k) => `<span>${esc(k)}</span>`).join('') || '<span>无关键词</span>'}</div>
         <div class="tpl-fields">${(t.fields_schema || []).map((f) => esc(f.label || f.key)).join('、') || '未定义字段'}</div>
         <div class="tpl-actions">
-          <button class="btn btn-sm" onclick="editTpl('${t.id}')">编辑</button>
-          <button class="btn btn-sm" onclick="toggleTpl('${t.id}',${!t.enabled})">${t.enabled ? '停用' : '启用'}</button>
-          <button class="btn btn-sm btn-warn" onclick="delTpl('${t.id}')">删除</button>
+          <button class="btn btn-sm" data-perm="templates:edit" onclick="editTpl('${t.id}')">编辑</button>
+          <button class="btn btn-sm" data-perm="templates:edit" onclick="toggleTpl('${t.id}',${!t.enabled})">${t.enabled ? '停用' : '启用'}</button>
+          <button class="btn btn-sm btn-warn" data-perm="templates:delete" onclick="delTpl('${t.id}')">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">暂无模板，点「恢复默认模板」</div>';
+    box.innerHTML += `<button class="btn btn-sm" data-perm="templates:edit" onclick="seedTpls()" style="margin-top:10px">恢复默认模板</button>`;
   } catch (e) { box.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
 }
 
@@ -2236,13 +2406,258 @@ $('#cmpRun').onclick = async () => {
   } catch (e) { $('#cmpSummary').textContent = '对比失败：' + e.message; }
 };
 
+/* ================ 系统管理：用户 ================ */
+async function loadUsers() {
+  const el = $('#adminUsersBox');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const users = await req('/users');
+    el.innerHTML = `
+      <div class="admin-bar">
+        <h3>用户列表（${users.length}）</h3>
+        <button class="btn btn-sm btn-primary" data-perm="users:add" onclick="openUserForm()">+ 新增用户</button>
+      </div>
+      <table><thead><tr><th>用户名</th><th>姓名</th><th>角色</th><th>状态</th><th>超管</th><th>最近登录</th><th>操作</th></tr></thead>
+      <tbody>${users.map((u) => `<tr>
+        <td>${esc(u.username)}</td>
+        <td>${esc(u.display_name || '-')}</td>
+        <td>${u.roles.length ? u.roles.map((r) => `<span class="tag tag-done">${esc(r.name)}</span>`).join(' ') : '<span class="muted">-</span>'}</td>
+        <td>${u.is_active ? '<span class="tag tag-done">启用</span>' : '<span class="tag tag-failed">停用</span>'}</td>
+        <td>${u.is_super ? '✔' : ''}</td>
+        <td>${fmtTime(u.last_login_at)}</td>
+        <td>
+          <button class="btn btn-sm" data-perm="users:edit" onclick="openUserForm('${u.id}')">编辑</button>
+          <button class="btn btn-sm" data-perm="users:edit" onclick="resetUserPwd('${u.id}')">重置密码</button>
+          ${u.is_super ? '' : `<button class="btn btn-sm btn-warn" data-perm="users:delete" onclick="delUser('${u.id}')">删除</button>`}
+        </td>
+      </tr>`).join('')}</tbody></table>`;
+  } catch (e) { el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
+  applyPermGates();
+}
+
+async function openUserForm(userId) {
+  let roles = [];
+  try { roles = await req('/roles'); } catch (e) { /* 无角色权限时仍可建普通用户 */ }
+  let u = null;
+  if (userId) {
+    try { const users = await req('/users'); u = users.find((x) => x.id === userId); } catch (e) { toast('加载用户失败：' + e.message, 'err'); return; }
+    if (!u) { toast('用户不存在', 'err'); return; }
+  }
+  const roleChk = roles.map((r) => {
+    const on = u && u.roles.some((x) => x.id === r.id);
+    return `<label class="perm-item"><input type="checkbox" class="u-role" value="${r.id}" ${on ? 'checked' : ''}> ${esc(r.name)}</label>`;
+  }).join('') || '<span class="muted">无可用角色</span>';
+  openDrawer(u ? '编辑用户：' + u.username : '新增用户', `
+    <div class="form-grid" style="grid-template-columns:1fr">
+      ${u ? '' : '<div class="form-row"><label>用户名（登录账号，不可重复）</label><input id="ufUsername" placeholder="如 zhangsan"></div>'}
+      <div class="form-row"><label>显示姓名</label><input id="ufName" value="${u ? esc(u.display_name || '') : ''}" placeholder="如 张三"></div>
+      <div class="form-row"><label>${u ? '重置密码（留空=不修改）' : '初始密码（至少6位）'}</label><input id="ufPwd" type="password" placeholder="${u ? '留空不修改' : '至少 6 位'}"></div>
+      <div class="form-row inline"><label class="chk"><input type="checkbox" id="ufActive" ${!u || u.is_active ? 'checked' : ''}> 启用该账号</label></div>
+      <div class="form-row"><label>分配角色</label><div class="perm-tree" style="grid-template-columns:1fr">${roleChk}</div></div>
+    </div>
+    <div class="row-btns">
+      <button class="btn btn-primary btn-sm" onclick="saveUser('${u ? u.id : ''}')">保存</button>
+      <button class="btn btn-sm" onclick="closeDrawer()">取消</button>
+    </div>`);
+}
+
+window.saveUser = async (userId) => {
+  const name = $('#ufName').value.trim();
+  const pwd = $('#ufPwd').value;
+  const active = $('#ufActive').checked;
+  const roleIds = $$('.u-role:checked').map((x) => x.value);
+  try {
+    if (userId) {
+      const body = { display_name: name, is_active: active };
+      if (pwd) body.password = pwd;
+      if (!$('#ufUsername')) { /* 编辑时角色可改 */ }
+      await req('/users/' + userId, { method: 'PATCH', body: JSON.stringify({ ...body, role_ids: roleIds }) });
+      toast('已保存', 'ok');
+    } else {
+      const username = $('#ufUsername').value.trim();
+      if (!username) { toast('请填写用户名', 'err'); return; }
+      if (pwd.length < 6) { toast('密码至少 6 位', 'err'); return; }
+      await req('/users', { method: 'POST', body: JSON.stringify({ username, password: pwd, display_name: name, is_active: active, role_ids: roleIds }) });
+      toast('已创建用户', 'ok');
+    }
+    closeDrawer();
+    loadUsers();
+  } catch (e) { toast('保存失败：' + e.message, 'err'); }
+};
+
+window.delUser = async (id) => {
+  if (!confirm('确认删除该用户？删除后其账号将无法登录。')) return;
+  try {
+    await req('/users/' + id, { method: 'DELETE' });
+    toast('已删除', 'ok');
+    loadUsers();
+  } catch (e) { toast('删除失败：' + e.message, 'err'); }
+};
+
+window.resetUserPwd = async (id) => {
+  const pwd = prompt('请输入新密码（至少 6 位）：');
+  if (!pwd) return;
+  if (pwd.length < 6) { toast('密码至少 6 位', 'err'); return; }
+  try {
+    await req('/users/' + id + '/reset-password', { method: 'POST', body: JSON.stringify({ new_password: pwd }) });
+    toast('密码已重置', 'ok');
+  } catch (e) { toast('重置失败：' + e.message, 'err'); }
+};
+
+/* ================ 系统管理：角色 ================ */
+async function loadRoles() {
+  const el = $('#adminRolesBox');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const roles = await req('/roles');
+    el.innerHTML = `
+      <div class="admin-bar">
+        <h3>角色列表（${roles.length}）</h3>
+        <button class="btn btn-sm btn-primary" data-perm="roles:add" onclick="openRoleForm()">+ 新增角色</button>
+      </div>
+      <table><thead><tr><th>角色</th><th>编码</th><th>说明</th><th>权限数</th><th>成员数</th><th>内置</th><th>操作</th></tr></thead>
+      <tbody>${roles.map((r) => `<tr>
+        <td><b>${esc(r.name)}</b></td>
+        <td><code>${esc(r.code)}</code></td>
+        <td class="wrap">${esc(r.description || '-')}</td>
+        <td>${r.code === 'admin' ? '全部' : r.permission_codes.length}</td>
+        <td>${r.user_count}</td>
+        <td>${r.is_builtin ? '<span class="tag tag-skipped">内置</span>' : ''}</td>
+        <td>
+          <button class="btn btn-sm" data-perm="roles:edit" onclick="openRoleForm('${r.id}')">${r.code === 'admin' ? '查看' : '编辑权限'}</button>
+          ${r.is_builtin ? '' : `<button class="btn btn-sm btn-warn" data-perm="roles:delete" onclick="delRole('${r.id}')">删除</button>`}
+        </td>
+      </tr>`).join('')}</tbody></table>`;
+  } catch (e) { el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
+  applyPermGates();
+}
+
+async function openRoleForm(roleId) {
+  let cats = [];
+  try { cats = await req('/permissions'); } catch (e) { toast('加载权限目录失败：' + e.message, 'err'); return; }
+  let r = null;
+  if (roleId) {
+    try { const roles = await req('/roles'); r = roles.find((x) => x.id === roleId); } catch (e) { toast('加载角色失败：' + e.message, 'err'); return; }
+  }
+  if (r && r.code === 'admin') {
+    openDrawer('超级管理员', '<div class="empty">超级管理员拥有全部权限，无需（也不能）在权限树上勾选。可到「用户管理」绑定其他角色给具体用户。</div>');
+    return;
+  }
+  const has = new Set(r ? r.permission_ids : []);
+  const tree = cats.map((c) => `
+    <div class="perm-group">
+      <h4>${esc(c.name)} <code style="font-size:10px">${esc(c.module)}</code></h4>
+      ${c.actions.map((a) => `<label class="perm-item"><input type="checkbox" class="perm-chk" value="${a.code}" ${has.has(a.id) ? 'checked' : ''}> ${esc(a.name)}</label>`).join('')}
+    </div>`).join('');
+  openDrawer(r ? '编辑角色：' + r.name : '新增角色', `
+    <div class="form-grid" style="grid-template-columns:1fr">
+      ${r ? '' : `<div class="form-row"><label>角色名称</label><input id="rfName" placeholder="如 财务专员"></div>
+       <div class="form-row"><label>角色编码（小写字母/数字/下划线）</label><input id="rfCode" placeholder="如 finance"></div>`}
+      <div class="form-row"><label>角色说明</label><input id="rfDesc" value="${r ? esc(r.description || '') : ''}" placeholder="这个角色负责什么"></div>
+      <div class="form-row"><label>权限分配</label><div class="perm-tree">${tree}</div></div>
+    </div>
+    <div class="row-btns">
+      <button class="btn btn-primary btn-sm" onclick="saveRole('${r ? r.id : ''}')">保存</button>
+      <button class="btn btn-sm" onclick="closeDrawer()">取消</button>
+    </div>`);
+}
+
+window.saveRole = async (roleId) => {
+  const permIds = $$('.perm-chk:checked').map((x) => x.value);
+  try {
+    if (roleId) {
+      await req('/roles/' + roleId, { method: 'PATCH', body: JSON.stringify({ permission_ids: permIds }) });
+      toast('权限已保存', 'ok');
+    } else {
+      const name = $('#rfName').value.trim();
+      const code = $('#rfCode').value.trim();
+      const desc = $('#rfDesc').value.trim();
+      if (!name || !code) { toast('请填写角色名称与编码', 'err'); return; }
+      await req('/roles', { method: 'POST', body: JSON.stringify({ name, code, description: desc, permission_ids: permIds }) });
+      toast('角色已创建', 'ok');
+    }
+    closeDrawer();
+    loadRoles();
+  } catch (e) { toast('保存失败：' + e.message, 'err'); }
+};
+
+window.delRole = async (id) => {
+  if (!confirm('确认删除该角色？')) return;
+  try {
+    await req('/roles/' + id, { method: 'DELETE' });
+    toast('已删除', 'ok');
+    loadRoles();
+  } catch (e) { toast('删除失败：' + e.message, 'err'); }
+};
+
+/* ================ 系统管理：权限目录 ================ */
+async function loadPermCatalog() {
+  const el = $('#adminPermsBox');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const cats = await req('/permissions');
+    const total = cats.reduce((s, c) => s + c.actions.length, 0);
+    el.innerHTML = `
+      <div class="admin-bar"><h3>权限目录（${cats.length} 个模块 · ${total} 项按钮权限）</h3></div>
+      <p class="hint">权限 = 「模块:操作」，如 records:delete 表示「结构化数据 → 删除记录」。在「角色管理 → 编辑权限」中按模块勾选分配。</p>
+      <div class="perm-tree" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
+        ${cats.map((c) => `<div class="perm-group">
+          <h4>${esc(c.name)} <code style="font-size:10px">${esc(c.module)}</code></h4>
+          ${c.actions.map((a) => `<div class="perm-item">${esc(a.name)} <code style="font-size:10px;color:var(--muted)">${esc(a.code)}</code></div>`).join('')}
+        </div>`).join('')}
+      </div>`;
+  } catch (e) { el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
+}
+
+/* ================ 修改密码 ================ */
+function openChangePwd() {
+  openDrawer('修改密码', `
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-row"><label>原密码</label><input id="cpOld" type="password"></div>
+      <div class="form-row"><label>新密码（至少6位）</label><input id="cpNew" type="password"></div>
+    </div>
+    <div class="row-btns">
+      <button class="btn btn-primary btn-sm" onclick="doChangePwd()">确认修改</button>
+      <button class="btn btn-sm" onclick="closeDrawer()">取消</button>
+    </div>`);
+}
+window.doChangePwd = async () => {
+  const oldP = $('#cpOld').value, newP = $('#cpNew').value;
+  if (!oldP || newP.length < 6) { toast('请填写完整，新密码至少 6 位', 'err'); return; }
+  try {
+    await req('/auth/change-password', { method: 'POST', body: JSON.stringify({ old_password: oldP, new_password: newP }) });
+    toast('密码已修改，请重新登录', 'ok');
+    closeDrawer();
+    logout();
+  } catch (e) { toast('修改失败：' + e.message, 'err'); }
+};
+
 /* ================ 启动 ================ */
 bindSubtabs();
+$('#btnLogin').onclick = doLogin;
+$('#loginPass').onkeydown = (e) => { if (e.key === 'Enter') doLogin(); };
+$('#btnLogout').onclick = logout;
+$('#btnChangePwd').onclick = openChangePwd;
+
 (async function boot() {
+  loadAuth();
+  applyAuthUI();
+  const token = localStorage.getItem(LS_TOKEN);
+  if (!token) { showLogin(); return; }
+  // 用 /auth/me 刷新权限（服务端重启后 token 可能失效，此时回落登录页）
   try {
-    const cfg = await req('/system/config');
-    $('#modePill').textContent = '采集模式：' + (cfg.collector_mode === 'mock' ? 'mock（演示）' : 'archive（会话存档）');
-    // 顶栏副标题已隐藏，不再动态填充流程说明
-  } catch (e) { /* 后端未就绪时不阻塞页面 */ }
-  loadDashboard();
+    const me = await req('/auth/me');
+    saveAuth(me, token);
+  } catch (e) {
+    showLogin();
+    return;
+  }
+  applyAuthUI();
+  refreshModePill();
+  const active = document.querySelector('.tab.active');
+  const loader = MAIN_LOADERS[active && active.dataset.view];
+  (loader || loadDashboard)();
 })();

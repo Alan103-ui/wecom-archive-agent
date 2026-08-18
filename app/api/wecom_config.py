@@ -23,6 +23,7 @@ from app.collectors import get_collector, reset_collector
 from app.config import BASE_DIR, settings
 from app.db.database import get_db
 from app.models.entities import WeComConfig
+from app.services.auth.rbac import require_perm
 from app.services.wecom_token import verify_token
 
 router = APIRouter()
@@ -59,7 +60,7 @@ class WeComVerifyIn(BaseModel):
 
 
 # ---------------------------------------------------------------- 读取
-@router.get("/wecom-config", summary="读取企业微信接口配置")
+@router.get("/wecom-config", summary="读取企业微信接口配置", dependencies=[Depends(require_perm("wecom", "view"))])
 def get_wecom_config(db: Session = Depends(get_db)):
     row = db.get(WeComConfig, 1)
     if row is None:
@@ -117,7 +118,7 @@ def get_wecom_config(db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------- 验证连通性
-@router.post("/wecom-config/verify", summary="验证企业微信凭证连通性（真实请求一次 gettoken）")
+@router.post("/wecom-config/verify", summary="验证企业微信凭证连通性（真实请求一次 gettoken）", dependencies=[Depends(require_perm("wecom", "operate"))])
 def post_verify_wecom(payload: WeComVerifyIn):
     """用 corpid + secret 真实请求一次 access_token，返回官方 errcode/errmsg。
 
@@ -142,7 +143,7 @@ def post_verify_wecom(payload: WeComVerifyIn):
 
 
 # ---------------------------------------------------------------- 保存
-@router.put("/wecom-config", summary="保存企业微信接口配置并热生效")
+@router.put("/wecom-config", summary="保存企业微信接口配置并热生效", dependencies=[Depends(require_perm("wecom", "edit"))])
 def put_wecom_config(payload: WeComConfigIn, db: Session = Depends(get_db)):
     if payload.mode not in ("mock", "archive"):
         raise HTTPException(400, "mode 只能是 mock 或 archive")

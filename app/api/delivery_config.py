@@ -14,11 +14,12 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.models.risk import AlertTarget, RiskEvent
 from app.services.alert.sender import _send_one
+from app.services.auth.rbac import require_perm
 from app.services.settings_store import (
     get_smtp_config,
     get_wecom_app_config,
@@ -56,7 +57,7 @@ class SmtpIn(BaseModel):
     tls: bool = True
 
 
-@router.get("/smtp-config", summary="读取邮件(SMTP)配置（不回显密码）")
+@router.get("/smtp-config", summary="读取邮件(SMTP)配置（不回显密码）", dependencies=[Depends(require_perm("delivery", "view"))])
 def get_smtp():
     c = get_smtp_config()
     return {
@@ -69,7 +70,7 @@ def get_smtp():
     }
 
 
-@router.put("/smtp-config", summary="保存邮件(SMTP)配置")
+@router.put("/smtp-config", summary="保存邮件(SMTP)配置", dependencies=[Depends(require_perm("delivery", "edit"))])
 def put_smtp(payload: SmtpIn):
     if not _is_valid_from_addr(payload.from_addr):
         raise HTTPException(
@@ -94,7 +95,7 @@ class WeComAppIn(BaseModel):
     agent_secret: str = ""  # 留空=保留原值
 
 
-@router.get("/wecom-app-config", summary="读取企微应用消息凭证（不回显 secret）")
+@router.get("/wecom-app-config", summary="读取企微应用消息凭证（不回显 secret）", dependencies=[Depends(require_perm("delivery", "view"))])
 def get_wecom_app():
     c = get_wecom_app_config()
     return {
@@ -105,7 +106,7 @@ def get_wecom_app():
     }
 
 
-@router.put("/wecom-app-config", summary="保存企微应用消息凭证")
+@router.put("/wecom-app-config", summary="保存企微应用消息凭证", dependencies=[Depends(require_perm("delivery", "edit"))])
 def put_wecom_app(payload: WeComAppIn):
     set_wecom_app_config({
         "corp_id": payload.corp_id,
@@ -121,7 +122,7 @@ class DeliveryTestIn(BaseModel):
     target: str   # webhook URL / touser 或 party:xxx / 收件人邮箱
 
 
-@router.post("/delivery-config/test", summary="测试投递通道（构造合成事件真实发送一次）")
+@router.post("/delivery-config/test", summary="测试投递通道（构造合成事件真实发送一次）", dependencies=[Depends(require_perm("delivery", "operate"))])
 def test_delivery(payload: DeliveryTestIn):
     if payload.channel not in ("webhook", "app", "email"):
         return {"ok": False, "detail": f"不支持的通道 {payload.channel}"}

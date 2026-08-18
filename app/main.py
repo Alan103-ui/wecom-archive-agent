@@ -27,6 +27,7 @@ from app.services.extract.templates import seed_templates
 from app.services.llm.seed import seed_model_defaults
 from app.services.risk.seed import seed_risk_defaults
 from app.services.rooms_seed import seed_default_rooms
+from app.services.auth.catalog import seed_auth
 
 
 class NoCacheStaticFiles(StaticFiles):
@@ -72,6 +73,7 @@ async def lifespan(app: FastAPI):
         seed_model_defaults(db)
         seed_risk_defaults(db)
         seed_default_rooms(db)
+        seed_auth(db)
     finally:
         db.close()
 

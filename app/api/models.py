@@ -32,6 +32,7 @@ from app.models.model_config import (
 )
 from app.services.llm import client as llm_client
 from app.services.llm.client import _normalize_base_url
+from app.services.auth.rbac import require_perm
 
 router = APIRouter()
 
@@ -133,13 +134,13 @@ def _to_out(c: ModelConfig) -> ModelOut:
 
 
 # ---------------------------------------------------------------- 路由
-@router.get("", response_model=list[ModelOut], summary="模型连接列表")
+@router.get("", response_model=list[ModelOut], summary="模型连接列表", dependencies=[Depends(require_perm("models", "view"))])
 def list_models(db: Session = Depends(get_db)):
     rows = db.query(ModelConfig).order_by(ModelConfig.created_at).all()
     return [_to_out(r) for r in rows]
 
 
-@router.post("", response_model=ActionResult, summary="新建模型连接")
+@router.post("", response_model=ActionResult, summary="新建模型连接", dependencies=[Depends(require_perm("models", "add"))])
 def create_model(body: ModelCreate, db: Session = Depends(get_db)):
     roles = [r for r in body.roles if r in ROLES]
     cid = _slug(body.name, db)
@@ -163,7 +164,7 @@ def create_model(body: ModelCreate, db: Session = Depends(get_db)):
     return ActionResult(id=cid, message="已创建模型连接", data={"config": _to_out(cfg).model_dump(mode="json")})
 
 
-@router.get("/roles", summary="角色→配置 绑定关系")
+@router.get("/roles", summary="角色→配置 绑定关系", dependencies=[Depends(require_perm("models", "view"))])
 def role_bindings(db: Session = Depends(get_db)):
     configs = db.query(ModelConfig).order_by(ModelConfig.created_at).all()
     binding: dict[str, dict] = {}
@@ -191,7 +192,7 @@ def role_bindings(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/{model_id}", response_model=ModelOut, summary="模型连接详情")
+@router.get("/{model_id}", response_model=ModelOut, summary="模型连接详情", dependencies=[Depends(require_perm("models", "view"))])
 def get_model(model_id: str, db: Session = Depends(get_db)):
     c = db.get(ModelConfig, model_id)
     if not c:
@@ -199,7 +200,7 @@ def get_model(model_id: str, db: Session = Depends(get_db)):
     return _to_out(c)
 
 
-@router.patch("/{model_id}", response_model=ActionResult, summary="更新模型连接")
+@router.patch("/{model_id}", response_model=ActionResult, summary="更新模型连接", dependencies=[Depends(require_perm("models", "edit"))])
 def update_model(model_id: str, body: ModelUpdate, db: Session = Depends(get_db)):
     c = db.get(ModelConfig, model_id)
     if not c:
@@ -238,7 +239,7 @@ def update_model(model_id: str, body: ModelUpdate, db: Session = Depends(get_db)
     return ActionResult(id=model_id, message="已更新", data={"config": _to_out(c).model_dump(mode="json")})
 
 
-@router.delete("/{model_id}", response_model=ActionResult, summary="删除模型连接")
+@router.delete("/{model_id}", response_model=ActionResult, summary="删除模型连接", dependencies=[Depends(require_perm("models", "delete"))])
 def delete_model(model_id: str, db: Session = Depends(get_db)):
     c = db.get(ModelConfig, model_id)
     if not c:
@@ -249,7 +250,7 @@ def delete_model(model_id: str, db: Session = Depends(get_db)):
     return ActionResult(id=model_id, message="已删除模型连接")
 
 
-@router.post("/{model_id}/test", response_model=ActionResult, summary="连通性 + 样例自检")
+@router.post("/{model_id}/test", response_model=ActionResult, summary="连通性 + 样例自检", dependencies=[Depends(require_perm("models", "operate"))])
 def test_model(model_id: str, db: Session = Depends(get_db)):
     c = db.get(ModelConfig, model_id)
     if not c:
@@ -258,7 +259,7 @@ def test_model(model_id: str, db: Session = Depends(get_db)):
     return ActionResult(id=model_id, message="自检完成", data=result)
 
 
-@router.post("/fetch-models", summary="按连接信息拉取远端模型清单（不落库）")
+@router.post("/fetch-models", summary="按连接信息拉取远端模型清单（不落库）", dependencies=[Depends(require_perm("models", "operate"))])
 def fetch_models(body: FetchModelsIn, db: Session = Depends(get_db)):
     api_key = body.api_key
     if not api_key and body.config_id:
@@ -281,7 +282,7 @@ def fetch_models(body: FetchModelsIn, db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------- 内部
-@router.post("/probe", response_model=ActionResult, summary="对未保存的连接做连通性+样例自检")
+@router.post("/probe", response_model=ActionResult, summary="对未保存的连接做连通性+样例自检", dependencies=[Depends(require_perm("models", "operate"))])
 def probe_model(body: ProbeIn, db: Session = Depends(get_db)):
     api_key = body.api_key
     # 编辑已有连接时旧 key 留空 → 回退取已存 key（避免重新粘贴整串密钥）
