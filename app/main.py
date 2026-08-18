@@ -97,6 +97,15 @@ async def lifespan(app: FastAPI):
     _prepare_dirs()
     _check_security()
     _check_license()
+    # 后台预热机器指纹（Windows 采集约 1~2s，预热后 License/运维中心页面秒开）
+    try:
+        import threading
+
+        from app.services.license.manager import machine_fingerprint
+
+        threading.Thread(target=machine_fingerprint, daemon=True).start()
+    except Exception:  # noqa: BLE001
+        pass
     init_db()
     logger.info("数据库就绪：%s", settings.DATABASE_URL.split("://")[0])
 

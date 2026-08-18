@@ -19,6 +19,7 @@ import re
 import subprocess
 import uuid
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 
 from cryptography.hazmat.primitives import hashes, serialization
@@ -63,7 +64,7 @@ def _board_uuid() -> str:
         if sys_name == "Windows":
             out = subprocess.check_output(
                 "powershell -NoProfile -Command \"(Get-CimInstance Win32_ComputerSystemProduct).UUID\"",
-                shell=True, stderr=subprocess.DEVNULL, timeout=10,
+                shell=True, stderr=subprocess.DEVNULL, timeout=3,
             ).decode(errors="ignore")
         elif sys_name == "Linux":
             p = Path("/sys/class/dmi/id/product_uuid")
@@ -94,7 +95,13 @@ def _mac_address() -> str:
     return ""
 
 
+@lru_cache(maxsize=1)
 def machine_fingerprint() -> str:
+    """机器指纹（进程内只计算一次，结果缓存）。
+
+    注意：Windows 上采集主板 UUID 依赖 PowerShell/CIM，首调约 1~2 秒；
+    服务启动时已后台预热（见 main.py），后续请求直接命中缓存。
+    """
     raw = "|".join([
         _board_uuid(),
         _mac_address(),

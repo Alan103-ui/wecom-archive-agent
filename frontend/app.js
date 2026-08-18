@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-18-8';
+const APP_JS_VERSION = '2026-08-18-9';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -2619,12 +2619,18 @@ async function loadPermCatalog() {
 }
 
 /* ================ License 授权（私有化年费） ================ */
+let _licenseCache = null;
 async function loadLicense() {
   const el = $('#adminLicenseBox');
   if (!el) return;
   el.innerHTML = '<div class="empty">加载中…</div>';
   try {
-    const s = await req('/license/status');
+    const now = Date.now();
+    let s = (_licenseCache && now - _licenseCache.at < 60000) ? _licenseCache.data : null;
+    if (!s) {
+      s = await req('/license/status');
+      _licenseCache = { at: now, data: s };
+    }
     const badge = {
       valid: '<span class="tag" style="background:#e8f5e9;color:#2e7d32">有效</span>',
       grace: '<span class="tag" style="background:#fff3e0;color:#e65100">宽限期</span>',
@@ -2680,6 +2686,7 @@ window.submitActivateLicense = async () => {
   else { toast('请粘贴许可证内容或选择文件', 'err'); return; }
   try {
     await req('/license/activate', { method: 'POST', body: JSON.stringify(body) });
+    _licenseCache = null;  // 激活后立即刷新真实状态
     toast('许可证已激活', 'ok');
     closeDrawer();
     loadLicense();
@@ -2687,12 +2694,18 @@ window.submitActivateLicense = async () => {
 };
 
 /* ================ 运维中心（私有化自助运维） ================ */
+let _opsCache = null;
 async function loadOpsCenter() {
   const el = $('#adminOpsBox');
   if (!el) return;
   el.innerHTML = '<div class="empty">加载中…</div>';
   try {
-    const v = await req('/system/version');
+    const now = Date.now();
+    let v = (_opsCache && now - _opsCache.at < 60000) ? _opsCache.data : null;
+    if (!v) {
+      v = await req('/system/version');
+      _opsCache = { at: now, data: v };
+    }
     const lic = v.license || {};
     const licBadge = {
       valid: '<span class="tag" style="background:#e8f5e9;color:#2e7d32">有效</span>',

@@ -303,14 +303,16 @@ def _data_dir() -> Path:
     return Path(settings.AUDIT_LOG_PATH).parent
 
 
-@router.get("/version", summary="版本与环境信息", dependencies=[Depends(require_perm("system", "view"))])
-def version_info():
-    import platform
-    import sys
+# data 目录大小缓存（120s 内不重复全量遍历，media 增长后依然秒开）
+_data_size_cache: dict = {"at": 0.0, "mb": 0.0}
 
-    from app.services.license.manager import get_license_status
 
-    lic = get_license_status()
+def _data_size_mb() -> float:
+    import time
+
+    now = time.time()
+    if now - _data_size_cache["at"] < 120:
+        return _data_size_cache["mb"]
     size = 0.0
     try:
         for f in _data_dir().rglob("*"):
@@ -321,6 +323,19 @@ def version_info():
                     pass
     except OSError:
         pass
+    mb = round(size / 1048576, 1)
+    _data_size_cache.update(at=now, mb=mb)
+    return mb
+
+
+@router.get("/version", summary="版本与环境信息", dependencies=[Depends(require_perm("system", "view"))])
+def version_info():
+    import platform
+    import sys
+
+    from app.services.license.manager import get_license_status
+
+    lic = get_license_status()
     return {
         "app": settings.APP_NAME,
         "version": "1.0.0",
@@ -328,7 +343,7 @@ def version_info():
         "platform": platform.platform(),
         "database": "sqlite" if settings.is_sqlite else "postgresql",
         "collector_mode": settings.COLLECTOR_MODE,
-        "data_size_mb": round(size / 1048576, 1),
+        "data_size_mb": _data_size_mb(),
         "license": {
             "status": lic.get("status"),
             "customer": lic.get("customer"),
