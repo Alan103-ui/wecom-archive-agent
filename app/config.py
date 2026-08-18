@@ -187,6 +187,16 @@ class Settings(BaseSettings):
     # 到期后宽限天数（宽限期内仍可用，仅界面提示续费）
     LICENSE_GRACE_DAYS: int = 7
 
+    # ---------------- 安全加固 ----------------
+    # 密码最小长度（同时要求字母+数字，见 app/services/auth/policy.py）
+    AUTH_PASSWORD_MIN_LEN: int = 8
+    # 登录连续失败达到该次数后锁定账号
+    AUTH_MAX_FAILS: int = 5
+    # 锁定分钟数
+    AUTH_LOCK_MINUTES: int = 10
+    # 安全审计日志（登录/改密/用户管理）写入路径
+    AUDIT_LOG_PATH: str = str(BASE_DIR / "data" / "audit.log")
+
     # ---------------- 授权 License（私有化年费） ----------------
     # 公钥随部署包分发，用于客户机验签；私钥仅厂商持有用于签发，不进仓库/不进部署包。
     LICENSE_PUBLIC_KEY_PATH: str = str(BASE_DIR / "app" / "services" / "license" / "license_public.pem")

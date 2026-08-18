@@ -52,6 +52,17 @@ logger = logging.getLogger("app")
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 
+def _check_security() -> None:
+    """启动安全检查：AUTH_SECRET_KEY 是否仍为默认开发密钥。"""
+    if settings.AUTH_SECRET_KEY in ("wecom-archive-dev-secret-change-me", ""):
+        if settings.LICENSE_REQUIRED:
+            logger.error("⚠️ 生产模式必须覆盖 AUTH_SECRET_KEY（请在 .env 设置随机长串），否则存在越权伪造风险！")
+        else:
+            logger.warning("AUTH_SECRET_KEY 仍为默认开发密钥，生产部署务必在 .env 覆盖。")
+    if not Path(settings.AUDIT_LOG_PATH).parent.exists():
+        Path(settings.AUDIT_LOG_PATH).parent.mkdir(parents=True, exist_ok=True)
+
+
 def _check_license() -> None:
     """启动时校验 License：非强制模式仅提示；强制模式无效时告警（不阻断启动，便于排障）。"""
     st = get_license_status()
@@ -84,6 +95,7 @@ def _prepare_dirs() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _prepare_dirs()
+    _check_security()
     _check_license()
     init_db()
     logger.info("数据库就绪：%s", settings.DATABASE_URL.split("://")[0])

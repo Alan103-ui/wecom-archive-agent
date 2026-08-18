@@ -13,13 +13,14 @@ from app.db.database import get_db
 from app.models.auth import AuthRole, AuthUser
 from app.services.auth.rbac import require_auth, require_perm
 from app.services.auth.security import hash_password
+from app.services.auth.policy import check_password_strength, log_audit
 
 router = APIRouter(prefix="/users", tags=["用户管理"], dependencies=[Depends(require_auth)])
 
 
 class UserIn(BaseModel):
     username: str = Field(min_length=2, max_length=64)
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
     display_name: str = Field(default="", max_length=128)
     is_active: bool = True
     role_ids: list[str] = Field(default_factory=list)
@@ -32,7 +33,7 @@ class UserPatch(BaseModel):
 
 
 class UserResetPwd(BaseModel):
-    new_password: str = Field(min_length=6, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 def _user_out(db: Session, user: AuthUser) -> dict:
@@ -72,6 +73,9 @@ def create_user(payload: UserIn, db: Session = Depends(get_db), _=Depends(requir
     exists = db.execute(select(AuthUser).where(AuthUser.username == payload.username)).scalar_one_or_none()
     if exists:
         raise HTTPException(409, f"用户名已存在：{payload.username}")
+    ok, msg = check_password_strength(payload.password)
+    if not ok:
+        raise HTTPException(400, msg)
     user = AuthUser(
         username=payload.username,
         password_hash=hash_password(payload.password),
@@ -138,6 +142,10 @@ def reset_password(
     user = db.get(AuthUser, user_id)
     if user is None:
         raise HTTPException(404, "用户不存在")
+    ok, msg = check_password_strength(payload.new_password)
+    if not ok:
+        raise HTTPException(400, msg)
     user.password_hash = hash_password(payload.new_password)
     db.commit()
+    log_audit("user_crud", user.username, detail="重置密码")
     return {"ok": True, "message": "密码已重置"}
