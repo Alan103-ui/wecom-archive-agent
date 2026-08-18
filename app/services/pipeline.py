@@ -712,14 +712,27 @@ def reply_timeout_scan() -> dict:
 
 
 def risk_rescan(db: Session, room_id: str | None = None, limit: int | None = None) -> int:
-    """把已扫消息标记为待扫（回填/重扫）。返回重置条数"""
-    stmt = update(ChatMessage).where(ChatMessage.risk_scanned == True)  # noqa: E712
-    if room_id:
-        stmt = stmt.where(ChatMessage.room_id == room_id)
+    """把已扫消息标记为待扫（回填/重扫）。返回重置条数。
+
+    SQLite 不支持 ``UPDATE .. LIMIT``，故 limit 通过
+    ``WHERE id IN (SELECT id ... LIMIT n)`` 子查询实现，语义与 limit 一致。
+    """
     if limit:
-        # SQLite 的 UPDATE..LIMIT 不支持，这里简单全量重置（群数量不会太大）
-        pass
-    result = db.execute(stmt.values(risk_scanned=False))
+        sub = select(ChatMessage.id).where(ChatMessage.risk_scanned == True)  # noqa: E712
+        if room_id:
+            sub = sub.where(ChatMessage.room_id == room_id)
+        sub = sub.limit(limit)
+        stmt = (
+            update(ChatMessage)
+            .where(ChatMessage.id.in_(sub))
+            .values(risk_scanned=False)
+        )
+    else:
+        stmt = update(ChatMessage).where(ChatMessage.risk_scanned == True)  # noqa: E712
+        if room_id:
+            stmt = stmt.where(ChatMessage.room_id == room_id)
+        stmt = stmt.values(risk_scanned=False)
+    result = db.execute(stmt)
     db.commit()
     return result.rowcount or 0
 

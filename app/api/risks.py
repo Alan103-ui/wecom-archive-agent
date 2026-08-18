@@ -264,15 +264,15 @@ def list_logs(
 
 
 @router.post("/events/{event_id}/acknowledge", response_model=ActionResult, summary="确认/处置事件", dependencies=[Depends(require_perm("risks", "operate"))])
-def acknowledge(event_id: str, reviewer: str = Body("system", embed=True),
+def acknowledge(event_id: str, db: Session = Depends(get_db),
+                reviewer: str = Body("system", embed=True),
                 note: str | None = Body(None, embed=True)):
-    db = next(get_db())
     ev = db.get(RiskEvent, event_id)
     if ev is None:
         raise HTTPException(404, "事件不存在")
     ev.status = "acknowledged"
     ev.acknowledged_by = reviewer
-    ev.acknowledged_at = __import__("datetime").datetime.now()
+    ev.acknowledged_at = datetime.now()
     if note:
         ev.detail = (ev.detail or "") + f"\n[处置]{note}"
     db.commit()
@@ -302,8 +302,8 @@ def resend(event_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/rescan", response_model=ActionResult, summary="回填/重扫全部消息", dependencies=[Depends(require_perm("risks", "operate"))])
-def rescan(room_id: str | None = Body(None, embed=True), limit: int | None = Body(None, embed=True)):
-    db = next(get_db())
+def rescan(room_id: str | None = Body(None, embed=True), limit: int | None = Body(None, embed=True),
+            db: Session = Depends(get_db)):
     n = pipeline.risk_rescan(db, room_id=room_id, limit=limit)
     return ActionResult(message=f"已重置 {n} 条消息为待扫描，下一轮风险作业将重扫", data={"count": n})
 
@@ -349,7 +349,7 @@ def update_rule(rule_id: str, body: RuleUpdate, db: Session = Depends(get_db)):
         v = getattr(body, f)
         if v is not None:
             setattr(rule, f, v)
-    rule.updated_at = __import__("datetime").datetime.now()
+    rule.updated_at = datetime.now()
     db.commit()
     return ActionResult(message="已更新", data={"id": rule_id})
 
@@ -469,7 +469,7 @@ def test_layer(layer_id: str, db: Session = Depends(get_db)):
         from_id = "TEST-USER"
         snippet = "这是一条测试预警消息"
         detail = "连通性测试"
-        biz_time = __import__("datetime").datetime.now()
+        biz_time = datetime.now()
         category = "合规风险"
         severity = "high"
 

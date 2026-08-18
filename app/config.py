@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     PORT: int = 8002
     DEBUG: bool = True
 
+    # ---------------- CORS ----------------
+    # 跨域来源白名单（逗号分隔）。默认空 = 仅同源（本系统 SPA 同源部署，无需跨域）。
+    # ⚠️ 切勿设为 "*" 并与 allow_credentials=True 同开——任意来源可发起带凭证跨域请求。
+    # 确需跨域访问（如独立前端域名/管理台）时，在这里显式列出可信来源。
+    CORS_ALLOW_ORIGINS: str = ""
+
     # ---------------- 数据库 ----------------
     # SQLite:     sqlite:///D:/Clow/projects/wecom-archive-agent/data/archive.db
     # PostgreSQL: postgresql+psycopg://user:pwd@host:5432/wecom_archive

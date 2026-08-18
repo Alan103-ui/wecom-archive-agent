@@ -100,7 +100,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # 仅同源（SPA 同源部署）默认即可；跨域需显式白名单，避免 "*" + credentials 的越权风险
+    allow_origins=[o.strip() for o in settings.CORS_ALLOW_ORIGINS.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

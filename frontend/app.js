@@ -19,7 +19,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 /* 前端版本戳：用于确认浏览器实际加载的是哪版 app.js（排查缓存/旧部署） */
-const APP_JS_VERSION = '2026-08-18-3';
+const APP_JS_VERSION = '2026-08-18-4';
 function markJsVersion() {
   const el = $('#jsVer');
   if (el) el.textContent = 'JS:' + APP_JS_VERSION + (typeof loadRooms === 'function' ? '' : ' ⚠缺loadRooms');
@@ -2472,7 +2472,6 @@ window.saveUser = async (userId) => {
     if (userId) {
       const body = { display_name: name, is_active: active };
       if (pwd) body.password = pwd;
-      if (!$('#ufUsername')) { /* 编辑时角色可改 */ }
       await req('/users/' + userId, { method: 'PATCH', body: JSON.stringify({ ...body, role_ids: roleIds }) });
       toast('已保存', 'ok');
     } else {

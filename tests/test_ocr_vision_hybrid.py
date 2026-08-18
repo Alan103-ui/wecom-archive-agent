@@ -27,10 +27,20 @@ def _patch_vision(monkeypatch, vision_text="视觉模型识别出的文字"):
 
 
 def _patch_rapidocr(monkeypatch, blocks, avg):
-    monkeypatch.setattr(
-        ocr_engine, "_run_rapidocr",
-        lambda image_input, page=1: (blocks, avg),
-    )
+    """mock recognizer 入口 _run_image_rapidocr（recognize 实际调用它，
+    它内部才会调用更内层的 _run_rapidocr；直接 mock 内层会被 Image.open 解码挡住）。"""
+
+    def _fake(path, do_preprocess=True):
+        return OcrOutcome(
+            success=True,
+            text="\n".join(b.text for b in blocks),
+            blocks=list(blocks),
+            page_count=1,
+            avg_confidence=avg,
+            engine="rapidocr",
+        )
+
+    monkeypatch.setattr(ocr_engine, "_run_image_rapidocr", _fake)
 
 
 def test_high_confidence_keeps_rapidocr(monkeypatch, tmp_path):
